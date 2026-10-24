@@ -35,18 +35,21 @@ sys.path.insert(0, str(project_root / "src"))
 
 from fundus2oct.config import load_config
 from fundus2oct.data.dataset import OCTReconstructionDataset
+from fundus2oct.evaluation.metrics import (
+    TARGET_VAE_MAE,
+    TARGET_VAE_MSE,
+    VAEMetricTracker,
+    compute_mae,
+    compute_mse,
+    compute_psnr,
+    compute_ssim,
+    evaluate_vae_benchmarks,
+)
 from fundus2oct.models.oct_vae import (
     OCTAutoencoder2D,
     OCTVAE2D,
     build_oct_vae,
 )
-
-
-def compute_psnr(mse_val: float, max_val: float = 2.0) -> float:
-    """Computes Peak Signal-to-Noise Ratio (dB) for [-1.0, 1.0] range (dynamic range = 2.0)."""
-    if mse_val <= 1e-10:
-        return 50.0
-    return float(10.0 * math.log10((max_val ** 2) / mse_val))
 
 
 def parse_args():
@@ -128,9 +131,21 @@ def parse_args():
         help="Save checkpoint every N steps (default: 5000).",
     )
     parser.add_argument(
+        "--target-mse",
+        type=float,
+        default=TARGET_VAE_MSE,
+        help=f"Target MSE validation benchmark threshold (default: {TARGET_VAE_MSE}).",
+    )
+    parser.add_argument(
+        "--target-mae",
+        type=float,
+        default=TARGET_VAE_MAE,
+        help=f"Target MAE validation benchmark threshold (default: {TARGET_VAE_MAE}).",
+    )
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
-        help="Run quick 100-step smoke test for verification.",
+        help="Run quick smoke test for verification.",
     )
     return parser.parse_args()
 
@@ -142,13 +157,24 @@ def cycle_dataloader(loader: DataLoader):
             yield batch
 
 
-def evaluate(model, val_loader, kl_weight, device) -> Dict[str, float]:
-    """Runs evaluation over validation dataset."""
+def evaluate(
+    model,
+    val_loader,
+    kl_weight: float,
+    device: torch.device,
+    target_mse: float = TARGET_VAE_MSE,
+    target_mae: float = TARGET_VAE_MAE,
+) -> Dict[str, Any]:
+    """
+    Runs evaluation over validation dataset and tracks MSE and MAE against target benchmarks:
+    - MSE <= target_mse (0.0089)
+    - MAE <= target_mae (0.0587)
+    """
     model.eval()
-    total_recon = 0.0
-    total_mse = 0.0
-    total_l1 = 0.0
+    tracker = VAEMetricTracker(target_mse=target_mse, target_mae=target_mae)
     total_loss = 0.0
+    total_recon = 0.0
+    total_kl = 0.0
     n_batches = 0
 
     with torch.no_grad():
@@ -163,19 +189,18 @@ def evaluate(model, val_loader, kl_weight, device) -> Dict[str, float]:
 
             total_loss += losses["loss"].item()
             total_recon += losses["recon_loss"].item()
-            total_mse += losses["mse"].item()
-            total_l1 += losses["l1"].item()
+            if "kl_loss" in losses:
+                total_kl += losses["kl_loss"].item()
+
+            tracker.update(x_recon, x, compute_ssim_batch=True)
             n_batches += 1
 
+    metrics = tracker.compute()
     n_batches = max(n_batches, 1)
-    avg_mse = total_mse / n_batches
-    return {
-        "loss": total_loss / n_batches,
-        "recon_loss": total_recon / n_batches,
-        "mse": avg_mse,
-        "l1": total_l1 / n_batches,
-        "psnr": compute_psnr(avg_mse),
-    }
+    metrics["loss"] = total_loss / n_batches
+    metrics["recon_loss"] = total_recon / n_batches
+    metrics["kl_loss"] = total_kl / n_batches
+    return metrics
 
 
 def main():
@@ -197,6 +222,8 @@ def main():
     lr = args.lr
     kl_weight = args.kl_weight
     latent_channels = args.latent_channels
+    target_mse = args.target_mse
+    target_mae = args.target_mae
     is_autoencoder = args.model_type == "autoencoder"
 
     if args.device:
@@ -214,6 +241,7 @@ def main():
     print(f"Batch Size        : {batch_size}")
     print(f"Learning Rate     : {lr}")
     print(f"KL Loss Weight    : {kl_weight if not is_autoencoder else 'N/A (Autoencoder)'}")
+    print(f"Target Benchmarks : MSE <= {target_mse:.4f}, MAE <= {target_mae:.4f}")
     print(f"Compute Device    : {device}")
     print(f"Output Checkpoint : {args.output_checkpoint}")
     print("=" * 70)
@@ -291,6 +319,7 @@ def main():
 
     data_iter = iter(cycle_dataloader(train_loader))
     best_recon_loss = float("inf")
+    best_benchmarks = None
     start_time = time.time()
 
     running_loss = 0.0
@@ -364,17 +393,25 @@ def main():
 
         # Run Validation
         if step % val_interval == 0 or step == max_steps:
-            val_metrics = evaluate(model, val_loader, kl_weight, device)
+            val_metrics = evaluate(model, val_loader, kl_weight, device, target_mse, target_mae)
+            bench = val_metrics["benchmarks"]
+            mse_tag = "PASS" if bench["mse_passed"] else "FAIL"
+            mae_tag = "PASS" if bench["mae_passed"] else "FAIL"
+            all_tag = "[BENCHMARKS MET - PASS]" if bench["all_passed"] else "[BENCHMARKS PENDING]"
+
             print(
-                f"  >>> [Validation @ Step {step}] "
-                f"Val Recon Loss: {val_metrics['recon_loss']:.4f} (MSE: {val_metrics['mse']:.4f}, L1: {val_metrics['l1']:.4f}) | "
-                f"Val PSNR: {val_metrics['psnr']:.2f} dB",
+                f"  >>> [Validation @ Step {step:>6d}] "
+                f"Recon: {val_metrics['recon_loss']:.4f} | "
+                f"MSE: {val_metrics['mse']:.6f} (<= {target_mse:.4f} [{mse_tag}]) | "
+                f"MAE: {val_metrics['mae']:.6f} (<= {target_mae:.4f} [{mae_tag}]) | "
+                f"PSNR: {val_metrics['psnr']:.2f} dB | SSIM: {val_metrics['ssim']:.4f} | {all_tag}",
                 flush=True,
             )
 
             # Save best checkpoint
             if val_metrics["recon_loss"] < best_recon_loss:
                 best_recon_loss = val_metrics["recon_loss"]
+                best_benchmarks = bench
                 torch.save(
                     {
                         "step": step,
@@ -382,7 +419,12 @@ def main():
                         "optimizer_state_dict": optimizer.state_dict(),
                         "val_loss": val_metrics["loss"],
                         "val_recon_loss": best_recon_loss,
+                        "val_mse": val_metrics["mse"],
+                        "val_mae": val_metrics["mae"],
                         "val_psnr": val_metrics["psnr"],
+                        "val_ssim": val_metrics["ssim"],
+                        "benchmark_status": bench,
+                        "benchmarks_passed": bench["all_passed"],
                         "model_type": args.model_type,
                         "is_3d": False,
                         "config": {
@@ -392,6 +434,8 @@ def main():
                             "input_size": (256, 256),
                             "base_channels": cfg.vae.base_channels,
                             "channel_multipliers": cfg.vae.channel_multipliers,
+                            "target_mse": target_mse,
+                            "target_mae": target_mae,
                         },
                     },
                     checkpoint_out,
@@ -411,6 +455,8 @@ def main():
                         "latent_channels": latent_channels,
                         "latent_shape": (latent_channels, 32, 32),
                         "input_size": (256, 256),
+                        "target_mse": target_mse,
+                        "target_mae": target_mae,
                     },
                 },
                 checkpoint_out,
@@ -420,6 +466,9 @@ def main():
     print("=" * 70, flush=True)
     print(f"Training Complete in {elapsed_time:.1f}s ({elapsed_time/60.0:.2f} mins).", flush=True)
     print(f"Best Validation Reconstruction Loss: {best_recon_loss:.4f}", flush=True)
+    if best_benchmarks is not None:
+        print(f"Validation Target Benchmarks: {best_benchmarks['summary']}", flush=True)
+        print(f"Benchmarks Passed: {'YES' if best_benchmarks['all_passed'] else 'NO (Further training / tuning recommended)'}", flush=True)
     print(f"Verified Model Checkpoint: {checkpoint_out} ({checkpoint_out.stat().st_size / (1024*1024):.2f} MB)", flush=True)
     print("=" * 70, flush=True)
 
