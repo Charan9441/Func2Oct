@@ -1,0 +1,34 @@
+# Vercel Deployment Ignore Configuration
+# Prevents bundling massive virtual environments, weights, and raw datasets into Lambda function
+
+# Virtual environments
+.venv*
+venv*
+env*
+.env*
+
+# Checkpoints and model weights (188+ MB)
+checkpoints/
+*.pt
+*.pth
+*.onnx
+
+# Data and large output directories
+data/
+outputs/
+
+# Development, tests, and caching
+tests/
+scripts/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git and dev configs
+.git/
+.github/
+*.log
+requirements-dev.txt
+pytest.ini

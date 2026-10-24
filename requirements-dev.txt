@@ -1,0 +1,9 @@
+# Development & Testing Dependencies for Fund2Oct
+-r requirements.txt
+
+# Testing & Quality Assurance
+pytest>=8.0.0
+
+# Dataset Ingestion & Optional Model Export
+kaggle>=1.6.0
+onnx>=1.15.0; python_version < "3.14"

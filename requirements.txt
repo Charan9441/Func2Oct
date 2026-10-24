@@ -1,7 +1,8 @@
-# Fundus2OCT Dependencies
-# Compatible with Windows (Python 3.12 - 3.14)
+# Fetch lightweight CPU-only PyTorch wheels on Linux/Serverless environments
+# Prevents pulling 5.5 GB of NVIDIA CUDA packages into serverless deployment bundles
+--extra-index-url https://download.pytorch.org/whl/cpu
 
-# Deep Learning Framework
+# Deep Learning Framework (CPU-optimized for serverless & local inference)
 torch>=2.2.0
 torchvision>=0.17.0
 
@@ -23,10 +24,3 @@ matplotlib>=3.8.0
 # Configuration & Utilities
 pyyaml>=6.0.1
 tqdm>=4.66.0
-
-# Testing & Quality Assurance
-pytest>=8.0.0
-
-# Optional Deployment & Evaluation
-onnx>=1.15.0; python_version < "3.14"
-kaggle>=1.6.0
