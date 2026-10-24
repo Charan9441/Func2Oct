@@ -108,13 +108,74 @@ def move_modality_contents(src_dir: Path, dest_dir: Path):
             shutil.move(str(item), str(dest_dir))
 
 
+def extract_local_archive(archive_path: Path, base_data_dir: Path):
+    """Extracts a local zip file and arranges contents into data/fundus and data/oct."""
+    fundus_dest = base_data_dir / "fundus"
+    oct_dest = base_data_dir / "oct"
+
+    if not archive_path.exists():
+        raise FileNotFoundError(f"Local archive not found: {archive_path}")
+
+    temp_staging = Path(tempfile.mkdtemp(prefix="local_armd_"))
+    print(f"\n[1/2] Extracting local archive '{archive_path.name}' to staging area...")
+    print(f"      Staging directory: {temp_staging}")
+
+    try:
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            zf.extractall(temp_staging)
+
+        # Locate fundus and oct folders
+        fundus_src = find_modality_dir(temp_staging, "fundus")
+        oct_src = find_modality_dir(temp_staging, "oct")
+
+        if not fundus_src:
+            raise FileNotFoundError(f"Could not locate 'fundus' directory in archive {archive_path}")
+        if not oct_src:
+            raise FileNotFoundError(f"Could not locate 'oct' directory in archive {archive_path}")
+
+        print(f"      Detected Fundus source: {fundus_src}")
+        print(f"      Detected OCT source:    {oct_src}")
+
+        print(f"[2/2] Organizing files into:\n      -> {fundus_dest}\n      -> {oct_dest}")
+        move_modality_contents(fundus_src, fundus_dest)
+        move_modality_contents(oct_src, oct_dest)
+
+        print("[Success] Local archive extracted and organized successfully.")
+    finally:
+        if temp_staging.exists():
+            shutil.rmtree(temp_staging, ignore_errors=True)
+
+
+def auto_find_downloaded_zip() -> Optional[Path]:
+    """Checks user's Downloads and project directory for armd or archive zip files."""
+    candidates = []
+    search_dirs = [
+        Path.home() / "Downloads",
+        Path.cwd(),
+        Path.cwd().parent,
+    ]
+    for d in search_dirs:
+        if d.exists():
+            for p in d.glob("*.zip"):
+                name_l = p.name.lower()
+                if "armd" in name_l or "fundus" in name_l or "archive" in name_l:
+                    candidates.append(p)
+
+    if candidates:
+        # Return newest file
+        candidates.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        return candidates[0]
+    return None
+
+
 def download_and_extract_dataset(
     dataset_name: str,
     base_data_dir: Path,
     kaggle_token: Optional[str] = None,
     force_download: bool = False,
+    local_zip: Optional[Path] = None,
 ):
-    """Downloads dataset from Kaggle and arranges into base_data_dir/fundus and base_data_dir/oct."""
+    """Downloads from Kaggle or extracts local zip, then arranges into fundus/ and oct/."""
     fundus_dest = base_data_dir / "fundus"
     oct_dest = base_data_dir / "oct"
 
@@ -123,9 +184,22 @@ def download_and_extract_dataset(
 
     if (fundus_existing > 0 or oct_existing > 0) and not force_download:
         print(f"[Info] Found existing images: {fundus_existing} in {fundus_dest}, {oct_existing} in {oct_dest}.")
-        print("[Info] Skipping download. Use --force-download to redownload.")
+        print("[Info] Skipping download/extraction. Proceeding directly to inspection.")
         return
 
+    # Check for specified or auto-detected local zip
+    target_zip = local_zip
+    if not target_zip:
+        auto_zip = auto_find_downloaded_zip()
+        if auto_zip:
+            print(f"[Info] Found downloaded archive in: {auto_zip}")
+            target_zip = auto_zip
+
+    if target_zip:
+        extract_local_archive(target_zip, base_data_dir)
+        return
+
+    # Fallback to Kaggle API if no local zip found
     ensure_kaggle_credentials(kaggle_token)
 
     try:
@@ -134,7 +208,7 @@ def download_and_extract_dataset(
         api.authenticate()
     except Exception as e:
         print(f"[Error] Failed to authenticate with Kaggle: {e}")
-        print("Please verify your KAGGLE_API_TOKEN or internet connection.")
+        print("Please verify your KAGGLE_API_TOKEN, internet connection, or provide a local zip using --zip-path.")
         sys.exit(1)
 
     temp_staging = Path(tempfile.mkdtemp(prefix="kaggle_armd_"))
@@ -409,6 +483,13 @@ def main():
         help="Kaggle API token (KGAT_... or credentials)",
     )
     parser.add_argument(
+        "--zip-path",
+        "--archive",
+        type=str,
+        default=None,
+        help="Path to locally downloaded dataset .zip file (bypasses Kaggle API).",
+    )
+    parser.add_argument(
         "--skip-download",
         action="store_true",
         help="Skip downloading and inspect existing files directly.",
@@ -454,11 +535,13 @@ def main():
 
     # 1. Download & extraction
     if not args.skip_download:
+        local_zip_path = Path(args.zip_path).resolve() if args.zip_path else None
         download_and_extract_dataset(
             dataset_name=args.dataset,
             base_data_dir=base_data_dir,
             kaggle_token=args.token,
             force_download=args.force_download,
+            local_zip=local_zip_path,
         )
 
     # 2. Scan modality files
