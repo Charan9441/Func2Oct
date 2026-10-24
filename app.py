@@ -237,6 +237,13 @@ def build_app() -> gr.Blocks:
     return demo
 
 
+# Top-level ASGI/WSGI/Serverless exports for hosting platforms (Vercel, Uvicorn, Hugging Face, etc.)
+# Resolves: [PYTHON_ENTRYPOINT_NOT_FOUND] Found app.py but it does not export a top-level "app", "application", or "handler" variable.
+demo = build_app()
+app = demo.app
+application = app
+handler = app
+
+
 if __name__ == "__main__":
-    app = build_app()
-    app.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
