@@ -149,3 +149,160 @@ def test_quality_control_blur():
     report = check_fundus_quality(flat_img)
     assert report.blur_score == 0.0
     assert any("blurred" in issue.lower() for issue in report.issues)
+
+
+def test_geometric_verification_normal_pass():
+    """Validates that a normal anatomical OD-macula layout yields PASS."""
+    from fundus2oct.data.quality_control import (
+        verify_optic_disc_macula_geometry,
+        OpticDiscResult,
+        MaculaResult,
+        QCStatus,
+    )
+    # Right Eye (OD): Optic Disc at (150, 250), radius 30 (diameter 60)
+    # Macula at (315, 255) -> dx = 165, dy = 5 -> distance = 165.08 px = 2.75 DD, angle = 1.74 deg
+    od = OpticDiscResult(
+        center=(150, 250),
+        radius=30,
+        bbox=(120, 220, 60, 60),
+        mask=np.zeros((500, 500), dtype=np.uint8),
+    )
+    macula = MaculaResult(
+        center=(315, 255),
+        radius=30,
+        bbox=(285, 225, 60, 60),
+        mask=np.zeros((500, 500), dtype=np.uint8),
+        od_to_fovea_distance=165.08,
+        od_to_fovea_distance_dd=2.75,
+        od_to_fovea_angle=1.74,
+    )
+
+    geom = verify_optic_disc_macula_geometry(od, macula, expected_laterality="OD")
+    assert geom.is_valid is True
+    assert geom.status == QCStatus.PASS
+    assert geom.inferred_laterality == "OD"
+    assert 2.5 <= geom.distance_dd <= 3.0
+    assert geom.angle_deviation_deg < 5.0
+    assert len(geom.issues) == 0
+
+
+def test_geometric_verification_left_eye_pass():
+    """Validates Left Eye (OS) geometry where macula is temporal (left of OD)."""
+    from fundus2oct.data.quality_control import verify_optic_disc_macula_geometry, QCStatus
+
+    # Left eye: OD at (350, 250), radius 30 (diameter 60). Macula at (185, 248) -> dx = -165, dy = -2
+    od_pt = (350, 250)
+    macula_pt = (185, 248)
+    geom = verify_optic_disc_macula_geometry(
+        od_pt,
+        macula_pt,
+        od_radius=30,
+        expected_laterality="OS",
+    )
+    assert geom.is_valid is True
+    assert geom.status == QCStatus.PASS
+    assert geom.inferred_laterality == "OS"
+    assert 2.7 <= geom.distance_dd <= 2.8
+    assert geom.angle_deviation_deg < 2.0
+
+
+def test_geometric_verification_distance_failures():
+    """Validates tolerance failure when distance is anatomically impossible."""
+    from fundus2oct.data.quality_control import verify_optic_disc_macula_geometry, QCStatus
+
+    # Critically short distance: 1.2 DD (72 px with diameter 60)
+    geom_short = verify_optic_disc_macula_geometry(
+        (150, 250),
+        (222, 250),
+        od_radius=30,
+    )
+    assert geom_short.is_valid is False
+    assert geom_short.status == QCStatus.FAIL
+    assert any("critically short" in issue.lower() for issue in geom_short.issues)
+
+    # Critically large distance: 4.8 DD (288 px with diameter 60)
+    geom_long = verify_optic_disc_macula_geometry(
+        (100, 250),
+        (388, 250),
+        od_radius=30,
+    )
+    assert geom_long.is_valid is False
+    assert geom_long.status == QCStatus.FAIL
+    assert any("critically large" in issue.lower() for issue in geom_long.issues)
+
+
+def test_geometric_verification_distance_warning():
+    """Validates WARNING status for borderline distance (e.g. 1.9 DD)."""
+    from fundus2oct.data.quality_control import verify_optic_disc_macula_geometry, QCStatus
+
+    # 1.9 DD (114 px with diameter 60) -> within [1.8, 2.0)
+    geom = verify_optic_disc_macula_geometry(
+        (150, 250),
+        (264, 250),
+        od_radius=30,
+    )
+    assert geom.is_valid is True
+    assert geom.status == QCStatus.WARNING
+    assert any("slightly short" in issue.lower() for issue in geom.issues)
+
+
+def test_geometric_verification_angle_failure():
+    """Validates failure when macula is placed far outside horizontal meridian."""
+    from fundus2oct.data.quality_control import verify_optic_disc_macula_geometry, QCStatus
+
+    # Macula placed directly below OD (dy = 160 px, dx = 0 px => angle = 90 deg)
+    geom = verify_optic_disc_macula_geometry(
+        (200, 100),
+        (200, 260),
+        od_radius=30,
+    )
+    assert geom.is_valid is False
+    assert geom.status == QCStatus.FAIL
+    assert any("angular deviation" in issue.lower() for issue in geom.issues)
+
+
+def test_geometric_verification_laterality_conflict():
+    """Validates failure when detected orientation conflicts with expected laterality."""
+    from fundus2oct.data.quality_control import verify_optic_disc_macula_geometry, QCStatus
+
+    # Macula is to the right of OD (Right Eye OD), but expected is Left Eye OS
+    geom = verify_optic_disc_macula_geometry(
+        (150, 250),
+        (315, 250),
+        od_radius=30,
+        expected_laterality="OS",
+    )
+    assert geom.is_valid is False
+    assert geom.status == QCStatus.FAIL
+    assert any("conflicting with expected laterality" in issue.lower() for issue in geom.issues)
+
+
+def test_draw_geometric_verification():
+    """Verifies visualization overlay generation."""
+    from fundus2oct.data.quality_control import (
+        verify_optic_disc_macula_geometry,
+        draw_geometric_verification,
+        OpticDiscResult,
+        MaculaResult,
+    )
+    canvas = np.full((400, 400, 3), 50, dtype=np.uint8)
+    od = OpticDiscResult(
+        center=(120, 200),
+        radius=25,
+        bbox=(95, 175, 50, 50),
+        mask=np.zeros((400, 400), dtype=np.uint8),
+    )
+    macula = MaculaResult(
+        center=(250, 205),
+        radius=25,
+        bbox=(225, 180, 50, 50),
+        mask=np.zeros((400, 400), dtype=np.uint8),
+        od_to_fovea_distance=130.1,
+        od_to_fovea_distance_dd=2.6,
+        od_to_fovea_angle=2.2,
+    )
+    geom = verify_optic_disc_macula_geometry(od, macula)
+    annotated = draw_geometric_verification(canvas, od, macula, geom)
+    assert annotated.shape == canvas.shape
+    assert annotated.dtype == np.uint8
+
