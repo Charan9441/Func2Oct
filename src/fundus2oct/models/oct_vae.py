@@ -85,12 +85,13 @@ class OCTEncoder2D(nn.Module):
     2D OCT Encoder.
     Compresses (B, in_channels, H, W) through 3 downsampling stages (8x total downsampling)
     into Gaussian distribution parameters: mu and logvar of shape (B, latent_channels, H/8, W/8).
+    For (B, 1, 256, 256) input, outputs (B, 8, 32, 32) latent parameters.
     """
 
     def __init__(
         self,
         in_channels: int = 1,
-        latent_channels: int = 4,
+        latent_channels: int = 8,
         base_channels: int = 32,
         channel_multipliers: Tuple[int, ...] = (1, 2, 4, 8),
     ):
@@ -101,7 +102,7 @@ class OCTEncoder2D(nn.Module):
         # Initial projection
         self.init_conv = nn.Conv2d(in_channels, base_channels, kernel_size=3, padding=1)
 
-        # Downsampling stages
+        # Downsampling stages (3 downsamplings = 8x downsampling factor)
         down_blocks = []
         cur_ch = base_channels
         for i, mult in enumerate(channel_multipliers):
@@ -109,7 +110,7 @@ class OCTEncoder2D(nn.Module):
             down_blocks.append(ResBlock2D(cur_ch, out_ch))
             cur_ch = out_ch
             if i < len(channel_multipliers) - 1:
-                # Strided conv for downsampling
+                # Strided conv for 2x downsampling
                 down_blocks.append(nn.Conv2d(cur_ch, cur_ch, kernel_size=4, stride=2, padding=1))
 
         self.down_stages = nn.Sequential(*down_blocks)
@@ -137,11 +138,12 @@ class OCTDecoder2D(nn.Module):
     2D OCT Decoder.
     Reconstructs continuous latent z in R^(B, latent_channels, H/8, W/8) back to
     synthesized B-scan in R^(B, out_channels, H, W) normalized to [-1.0, 1.0].
+    For (B, 8, 32, 32) latent input, reconstructs to (B, 1, 256, 256).
     """
 
     def __init__(
         self,
-        latent_channels: int = 4,
+        latent_channels: int = 8,
         out_channels: int = 1,
         base_channels: int = 32,
         channel_multipliers: Tuple[int, ...] = (8, 4, 2, 1),
@@ -176,12 +178,15 @@ class OCTDecoder2D(nn.Module):
 
 
 class OCTVAE2D(nn.Module):
-    """Full 2D OCT Variational Autoencoder."""
+    """
+    Full 2D OCT Variational Autoencoder.
+    Maps 256x256 B-scans to 8x32x32 latent space and reconstructs back to 256x256.
+    """
 
     def __init__(
         self,
         in_channels: int = 1,
-        latent_channels: int = 4,
+        latent_channels: int = 8,
         base_channels: int = 32,
         channel_multipliers: Tuple[int, ...] = (1, 2, 4, 8),
     ):
@@ -207,6 +212,20 @@ class OCTVAE2D(nn.Module):
     def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.encoder(x)
 
+    def encode_latent(
+        self,
+        x: torch.Tensor,
+        deterministic: bool = True,
+        stochastic: Optional[bool] = None,
+    ) -> torch.Tensor:
+        """Directly encodes B-scan to latent representation z: (B, 8, 32, 32)."""
+        mu, logvar = self.encode(x)
+        if stochastic is not None:
+            use_stoch = stochastic
+        else:
+            use_stoch = not deterministic
+        return self.reparameterize(mu, logvar, stochastic=use_stoch)
+
     def reparameterize(
         self,
         mu: torch.Tensor,
@@ -226,6 +245,11 @@ class OCTVAE2D(nn.Module):
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         return self.decoder(z)
 
+    def reconstruct(self, x: torch.Tensor) -> torch.Tensor:
+        """Full deterministic reconstruction of input B-scan."""
+        z = self.encode_latent(x, deterministic=True)
+        return self.decode(z)
+
     def forward(
         self,
         x: torch.Tensor,
@@ -240,21 +264,23 @@ class OCTVAE2D(nn.Module):
         self,
         x: torch.Tensor,
         x_recon: torch.Tensor,
-        mu: torch.Tensor,
-        logvar: torch.Tensor,
+        mu: Optional[torch.Tensor] = None,
+        logvar: Optional[torch.Tensor] = None,
         kl_weight: float = 1e-4,
     ) -> Dict[str, torch.Tensor]:
         """
         Computes composite VAE loss:
-        Reconstruction Loss (L1 + MSE) + KL Divergence Loss.
+        Reconstruction Loss (MSE + 0.5 * L1) + KL Divergence Loss.
         """
         mse_loss = F.mse_loss(x_recon, x, reduction="mean")
         l1_loss = F.l1_loss(x_recon, x, reduction="mean")
         recon_loss = mse_loss + 0.5 * l1_loss
 
-        # Analytical KL divergence against standard normal N(0, I)
-        # KL = -0.5 * sum(1 + logvar - mu^2 - exp(logvar)) / (B * C * H * W)
-        kl_loss = -0.5 * torch.mean(1.0 + logvar - mu.pow(2) - logvar.exp())
+        if mu is not None and logvar is not None and kl_weight > 0.0:
+            # Analytical KL divergence against standard normal N(0, I)
+            kl_loss = -0.5 * torch.mean(1.0 + logvar - mu.pow(2) - logvar.exp())
+        else:
+            kl_loss = torch.tensor(0.0, device=x.device)
 
         total_loss = recon_loss + kl_weight * kl_loss
 
@@ -264,6 +290,85 @@ class OCTVAE2D(nn.Module):
             "kl_loss": kl_loss,
             "mse": mse_loss,
             "l1": l1_loss,
+        }
+
+
+class OCTAutoencoder2D(nn.Module):
+    """
+    Deterministic 2D OCT Autoencoder.
+    Maps 256x256 B-scans to 8x32x32 latent space and reconstructs back to 256x256.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 1,
+        latent_channels: int = 8,
+        base_channels: int = 32,
+        channel_multipliers: Tuple[int, ...] = (1, 2, 4, 8),
+    ):
+        super().__init__()
+        self.is_3d = False
+        self.in_channels = in_channels
+        self.latent_channels = latent_channels
+        self.is_trained = False
+
+        # Encoder stages
+        self.init_conv = nn.Conv2d(in_channels, base_channels, kernel_size=3, padding=1)
+        down_blocks = []
+        cur_ch = base_channels
+        for i, mult in enumerate(channel_multipliers):
+            out_ch = base_channels * mult
+            down_blocks.append(ResBlock2D(cur_ch, out_ch))
+            cur_ch = out_ch
+            if i < len(channel_multipliers) - 1:
+                down_blocks.append(nn.Conv2d(cur_ch, cur_ch, kernel_size=4, stride=2, padding=1))
+
+        self.down_stages = nn.Sequential(*down_blocks)
+        self.bottleneck = ResBlock2D(cur_ch, cur_ch)
+        self.to_latent = nn.Conv2d(cur_ch, latent_channels, kernel_size=3, padding=1)
+
+        # Decoder stages
+        self.decoder = OCTDecoder2D(
+            latent_channels=latent_channels,
+            out_channels=in_channels,
+            base_channels=base_channels,
+            channel_multipliers=tuple(reversed(channel_multipliers)),
+        )
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        """Maps (B, 1, 256, 256) -> (B, 8, 32, 32)."""
+        h = self.init_conv(x)
+        h = self.down_stages(h)
+        h = self.bottleneck(h)
+        z = self.to_latent(h)
+        return z
+
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """Reconstructs (B, 8, 32, 32) -> (B, 1, 256, 256)."""
+        return self.decoder(z)
+
+    def encode_latent(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Encodes input B-scan to latent representation z: (B, 8, 32, 32)."""
+        return self.encode(x)
+
+    def reconstruct(self, x: torch.Tensor) -> torch.Tensor:
+        """Directly reconstructs an input B-scan."""
+        return self.decode(self.encode(x))
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        z = self.encode(x)
+        x_recon = self.decode(z)
+        return x_recon, z
+
+    def loss_function(self, x: torch.Tensor, x_recon: torch.Tensor) -> Dict[str, torch.Tensor]:
+        mse = F.mse_loss(x_recon, x, reduction="mean")
+        l1 = F.l1_loss(x_recon, x, reduction="mean")
+        recon_loss = mse + 0.5 * l1
+        return {
+            "loss": recon_loss,
+            "recon_loss": recon_loss,
+            "mse": mse,
+            "l1": l1,
         }
 
 
@@ -434,14 +539,23 @@ class OCTVAE3D(nn.Module):
 def build_oct_vae(
     is_3d: bool = False,
     in_channels: int = 1,
-    latent_channels: int = 4,
+    latent_channels: int = 8,
     base_channels: Optional[int] = None,
     channel_multipliers: Tuple[int, ...] = (1, 2, 4, 8),
-) -> Union[OCTVAE2D, OCTVAE3D]:
-    """Factory helper to build appropriate 2D or 3D OCT VAE."""
+    as_autoencoder: bool = False,
+) -> Union[OCTVAE2D, OCTVAE3D, OCTAutoencoder2D]:
+    """Factory helper to build appropriate 2D (VAE or Autoencoder) or 3D OCT VAE."""
     if is_3d:
         base_ch = base_channels or 16
         return OCTVAE3D(
+            in_channels=in_channels,
+            latent_channels=latent_channels,
+            base_channels=base_ch,
+            channel_multipliers=channel_multipliers,
+        )
+    elif as_autoencoder:
+        base_ch = base_channels or 32
+        return OCTAutoencoder2D(
             in_channels=in_channels,
             latent_channels=latent_channels,
             base_channels=base_ch,
@@ -458,7 +572,7 @@ def build_oct_vae(
 
 
 def load_vae_checkpoint(
-    model: Union[OCTVAE2D, OCTVAE3D],
+    model: Union[OCTVAE2D, OCTVAE3D, OCTAutoencoder2D],
     checkpoint_path: Union[str, Path],
     device: torch.device = torch.device("cpu"),
     allow_untrained_fallback: bool = False,
