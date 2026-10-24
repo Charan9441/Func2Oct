@@ -70,7 +70,7 @@ def main():
         for p in report["leakage_patients"]:
             print(f"  - Patient: {p}")
     else:
-        print("\n[✓ PASS] Zero patient leakage: Patient IDs are strictly isolated across splits.")
+        print("\n[PASS] Zero patient leakage: Patient IDs are strictly isolated across splits.")
 
     if report["missing_files"]:
         print(f"\n[Warning] {len(report['missing_files'])} file(s) referenced in manifest were not found on disk.")
@@ -79,7 +79,7 @@ def main():
         if len(report["missing_files"]) > 5:
             print(f"  ... and {len(report['missing_files']) - 5} more.")
     else:
-        print("[✓ PASS] All referenced files exist on disk.")
+        print("[PASS] All referenced files exist on disk.")
 
     print("\n" + "=" * 70)
     print("  VALIDATION SUMMARY: " + ("PASSED" if report["is_valid"] else "FAILED (Check Warnings)"))
