@@ -13,6 +13,13 @@ from .oct_vae import (
     build_oct_vae,
     load_vae_checkpoint,
 )
+from .conditional_diffusion import (
+    ConditionalLVDM3D,
+    ResBlock3D,
+    UNet3D,
+    build_lvdm,
+    load_diffusion_checkpoint,
+)
 
 __all__ = [
     "FundusEncoder",
@@ -25,4 +32,9 @@ __all__ = [
     "OCTVAE3D",
     "build_oct_vae",
     "load_vae_checkpoint",
+    "ConditionalLVDM3D",
+    "ResBlock3D",
+    "UNet3D",
+    "build_lvdm",
+    "load_diffusion_checkpoint",
 ]

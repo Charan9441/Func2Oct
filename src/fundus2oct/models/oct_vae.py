@@ -543,11 +543,13 @@ def build_oct_vae(
     base_channels: Optional[int] = None,
     channel_multipliers: Tuple[int, ...] = (1, 2, 4, 8),
     as_autoencoder: bool = False,
+    checkpoint_path: Optional[Union[str, Path]] = None,
+    device: Optional[Union[str, torch.device]] = None,
 ) -> Union[OCTVAE2D, OCTVAE3D, OCTAutoencoder2D]:
     """Factory helper to build appropriate 2D (VAE or Autoencoder) or 3D OCT VAE."""
     if is_3d:
         base_ch = base_channels or 16
-        return OCTVAE3D(
+        model = OCTVAE3D(
             in_channels=in_channels,
             latent_channels=latent_channels,
             base_channels=base_ch,
@@ -555,7 +557,7 @@ def build_oct_vae(
         )
     elif as_autoencoder:
         base_ch = base_channels or 32
-        return OCTAutoencoder2D(
+        model = OCTAutoencoder2D(
             in_channels=in_channels,
             latent_channels=latent_channels,
             base_channels=base_ch,
@@ -563,12 +565,20 @@ def build_oct_vae(
         )
     else:
         base_ch = base_channels or 32
-        return OCTVAE2D(
+        model = OCTVAE2D(
             in_channels=in_channels,
             latent_channels=latent_channels,
             base_channels=base_ch,
             channel_multipliers=channel_multipliers,
         )
+
+    if checkpoint_path is not None:
+        load_vae_checkpoint(model, checkpoint_path, allow_untrained_fallback=True)
+
+    if device is not None:
+        model = model.to(device)
+
+    return model
 
 
 def load_vae_checkpoint(
