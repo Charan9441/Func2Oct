@@ -20,6 +20,10 @@ from .conditional_diffusion import (
     build_lvdm,
     load_diffusion_checkpoint,
 )
+from .pipeline import (
+    Fundus2OCTPipeline,
+    GeneratorNotReadyError,
+)
 
 __all__ = [
     "FundusEncoder",
@@ -37,4 +41,7 @@ __all__ = [
     "UNet3D",
     "build_lvdm",
     "load_diffusion_checkpoint",
+    "Fundus2OCTPipeline",
+    "GeneratorNotReadyError",
 ]
+

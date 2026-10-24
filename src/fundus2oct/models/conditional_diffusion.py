@@ -632,3 +632,9 @@ def load_diffusion_checkpoint(
     except Exception as e:
         print(f"[Warning] Failed loading diffusion checkpoint from {path}: {e}")
         return False
+
+
+# Aliases for cross-module compatibility
+build_conditional_diffusion = build_lvdm
+LVDMDiffusion = ConditionalLVDM3D
+
