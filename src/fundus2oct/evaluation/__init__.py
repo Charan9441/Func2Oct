@@ -27,6 +27,22 @@ from .compare_models import (
     plot_metrics_comparison,
     validate_inputs,
 )
+from .fid_fvd import (
+    FIDCalculator,
+    FVDCalculator,
+    InceptionV3FeatureExtractor,
+    SimpleFeatureExtractor2D,
+    SimpleFeatureExtractor3D,
+    Volume3DFeatureExtractor,
+    compute_activation_statistics,
+    compute_fid,
+    compute_fid_from_features,
+    compute_frechet_distance,
+    compute_fvd,
+    compute_fvd_from_features,
+    compute_slice_wise_fid,
+    evaluate_generative_distributions,
+)
 
 __all__ = [
     # Reconstruction
@@ -48,4 +64,20 @@ __all__ = [
     "plot_auroc_uplift",
     "plot_metrics_comparison",
     "validate_inputs",
+    # Generative Metrics: FID & FVD
+    "compute_frechet_distance",
+    "compute_activation_statistics",
+    "compute_fid_from_features",
+    "compute_fvd_from_features",
+    "compute_fid",
+    "compute_fvd",
+    "compute_slice_wise_fid",
+    "evaluate_generative_distributions",
+    "InceptionV3FeatureExtractor",
+    "Volume3DFeatureExtractor",
+    "SimpleFeatureExtractor2D",
+    "SimpleFeatureExtractor3D",
+    "FIDCalculator",
+    "FVDCalculator",
 ]
+
