@@ -148,6 +148,7 @@ _global_auto_capture_engine = AutoCaptureEngine(
     min_macula_confidence=0.25,
     required_consecutive_frames=3,
 )
+_last_auto_captured_frame: Optional[np.ndarray] = None
 
 _global_turing_session = ClinicalTuringTestSession()
 
@@ -377,6 +378,133 @@ def format_multimodal_predictions_html(
     </div>
     """
     return html
+
+
+# ---------------------------------------------------------------------------
+# Real-Time Auto-Capture Stream Callback Functions
+# ---------------------------------------------------------------------------
+
+def process_auto_capture_stream(
+    frame: Union[np.ndarray, Image.Image, None] = None,
+    focus_thresh: float = 0.50,
+    lockin_frames: int = 3,
+    reset_state: bool = False,
+    input_image: Union[np.ndarray, Image.Image, None] = None,
+    focus_threshold: Optional[float] = None,
+    required_frames: Optional[int] = None,
+    engine_reset: Optional[bool] = None,
+) -> Tuple[Optional[np.ndarray], str, float, Optional[np.ndarray], str]:
+    """Evaluates video stream or test frame through real-time auto-capture validation loop.
+
+    Returns:
+        annotated_frame: Augmented AR HUD overlay
+        feedback_markdown: Telemetry summary table and operator guidance
+        stability_progress: Float [0.0, 1.0] representing lock-in progress
+        captured_frame: The captured high-res image once triggered (or previously captured)
+        action_text: Status badge text
+    """
+    global _last_auto_captured_frame, _global_auto_capture_engine
+
+    if frame is None and input_image is not None:
+        frame = input_image
+    if focus_threshold is not None:
+        focus_thresh = focus_threshold
+    if required_frames is not None:
+        lockin_frames = required_frames
+    if engine_reset is not None:
+        reset_state = engine_reset
+
+    if reset_state:
+        _global_auto_capture_engine.reset()
+        _last_auto_captured_frame = None
+
+    if frame is None:
+        placeholder = create_demo_fundus(blur_level=0.0)
+        return (
+            placeholder,
+            "### ⏳ Waiting for Video Stream\n*Enable camera or upload a frame to initiate automated quality screening and acquisition.*",
+            0.0,
+            _last_auto_captured_frame,
+            "Idle / Standby",
+        )
+
+    # Convert to RGB numpy array
+    if isinstance(frame, Image.Image):
+        frame_arr = np.array(frame.convert("RGB"))
+    elif isinstance(frame, np.ndarray):
+        if frame.ndim == 2:
+            frame_arr = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+        elif frame.ndim == 3 and frame.shape[2] == 4:
+            frame_arr = cv2.cvtColor(frame, cv2.COLOR_RGBA2RGB)
+        else:
+            frame_arr = frame
+    else:
+        return (
+            None,
+            "### ⚠️ Unsupported Input Format\n*Please provide a valid RGB video frame or image.*",
+            0.0,
+            _last_auto_captured_frame,
+            "Error",
+        )
+
+    # Configure engine thresholds dynamically
+    _global_auto_capture_engine.min_clarity_score = float(focus_thresh)
+    _global_auto_capture_engine.required_consecutive_frames = max(1, int(lockin_frames))
+
+    # Run auto-capture evaluation pipeline
+    decision = _global_auto_capture_engine.process_frame(frame_arr, draw_overlay=True)
+
+    # If triggered, freeze and latch high-res captured frame
+    if decision.should_capture:
+        _last_auto_captured_frame = frame_arr.copy()
+        action_text = f"🎯 AUTO-CAPTURED (Frame #{decision.metrics.get('frame_index', 0)})"
+    elif decision.guidance_cue == GuidanceCue.HOLD_STEADY:
+        action_text = f"🔒 LOCKING ({decision.consecutive_passes}/{lockin_frames})"
+    elif decision.guidance_cue == GuidanceCue.ADJUST_FOCUS:
+        action_text = "🔍 ADJUST FOCUS"
+    elif decision.guidance_cue == GuidanceCue.ALIGN_OPTIC_DISC:
+        action_text = "📍 CENTER OPTIC DISC"
+    elif decision.guidance_cue == GuidanceCue.ALIGN_MACULA:
+        action_text = "🎯 ALIGN FOVEA"
+    else:
+        action_text = "👀 SEARCHING LANDMARKS"
+
+    clarity = decision.metrics.get("clarity_score", 0.0)
+    mlv = decision.metrics.get("modified_laplacian_variance", 0.0)
+    ten = decision.metrics.get("tenengrad_spectral_energy", 0.0)
+    od_conf = decision.metrics.get("od_confidence", 0.0)
+    mac_conf = decision.metrics.get("macula_confidence", 0.0)
+    dist_dd = decision.metrics.get("distance_dd", 0.0)
+    ang_dev = decision.metrics.get("angle_deviation_deg", 0.0)
+
+    feedback_markdown = f"""### {action_text}
+> **Operator Directive:** **{decision.feedback_message}**
+
+| Quality Criterion | Measured Value | Threshold / Standard | Evaluation |
+| :--- | :--- | :--- | :--- |
+| **Focus Clarity** | `{clarity*100:.1f}%` (MLV: `{mlv:.1f}`, Tenengrad: `{ten:.3f}`) | ≥ {focus_thresh*100:.0f}% | {'🟢 PASS' if decision.is_focus_valid else '🔴 BLURRED'} |
+| **Optic Disc (OD)** | `{od_conf*100:.0f}%` confidence | ≥ 30% confidence | {'🟢 DETECTED' if decision.is_optic_disc_valid else '🔴 MISSING'} |
+| **Macula / Fovea** | `{mac_conf*100:.0f}%` confidence | ≥ 25% confidence | {'🟢 LOCALIZED' if decision.is_macula_valid else '🔴 MISSING'} |
+| **Retinal Geometry** | `{dist_dd:.2f} DD` (dev: `{ang_dev:.1f}°`) | 2.0 – 3.5 DD, ≤ 25° | {'🟢 ALIGNED' if decision.is_geometry_valid else '🔴 MISALIGNED'} |
+| **Stability Lock-in** | `{decision.consecutive_passes} / {lockin_frames}` frames | `{lockin_frames}` consecutive frames | {'🎯 CAPTURE' if decision.should_capture else ('🟡 LOCKING' if decision.consecutive_passes > 0 else '⚪ SEARCHING')} |
+"""
+
+    annotated = decision.annotated_frame if decision.annotated_frame is not None else frame_arr
+    stability = float(decision.stability_progress)
+    captured = _last_auto_captured_frame
+
+    return (annotated, feedback_markdown, stability, captured, action_text)
+
+
+def transfer_captured_to_studio(captured_frame: Optional[np.ndarray]) -> Optional[Image.Image]:
+    """Transfers the auto-captured retinal frame to Panel 1 Fundus Input."""
+    global _last_auto_captured_frame
+    target = captured_frame if captured_frame is not None else _last_auto_captured_frame
+    if target is None:
+        return None
+    if isinstance(target, np.ndarray):
+        return Image.fromarray(target)
+    return target
 
 
 # ---------------------------------------------------------------------------
@@ -627,51 +755,8 @@ def load_blur_preset() -> Tuple[Image.Image, str]:
 
 
 # ---------------------------------------------------------------------------
-# Video Stream Auto-Capture & Quality Control Handlers
+# Full Quality Control Inspection Handlers
 # ---------------------------------------------------------------------------
-
-def process_auto_capture_stream(
-    input_image: Optional[Image.Image],
-    focus_threshold: float,
-    required_frames: int,
-    engine_reset: bool,
-) -> Tuple[Optional[np.ndarray], str, float, Optional[np.ndarray], str]:
-    """Process a live frame or uploaded image through the Auto-Capture Feedback Loop."""
-    global _global_auto_capture_engine
-
-    if engine_reset:
-        _global_auto_capture_engine.reset()
-
-    _global_auto_capture_engine.min_clarity_score = float(focus_threshold)
-    _global_auto_capture_engine.required_consecutive_frames = int(required_frames)
-
-    if input_image is None:
-        frame = create_demo_fundus(blur_level=0.0)
-    else:
-        frame = np.array(input_image)
-
-    decision: AutoCaptureDecision = _global_auto_capture_engine.process_frame(frame)
-
-    status_icon = "🟢" if decision.should_capture else ("🟡" if decision.is_focus_valid else "🔴")
-    status_summary = (
-        f"### {status_icon} Feedback: {decision.feedback_message}\n\n"
-        f"- **Guidance Cue**: `{decision.guidance_cue.value}`\n"
-        f"- **Lock-in Buffer**: `{decision.consecutive_passes} / {_global_auto_capture_engine.required_consecutive_frames}` frames\n"
-        f"- **Focus Clarity**: `{decision.metrics.get('clarity_score', 0.0) * 100:.1f}%` "
-        f"(MLV: `{decision.metrics.get('modified_laplacian_variance', 0.0):.1f}`, "
-        f"Freq Spec: `{decision.metrics.get('tenengrad_spectral_energy', 0.0):.4f}`)\n"
-        f"- **Optic Disc**: `{decision.metrics.get('od_confidence', 0.0) * 100:.0f}% confidence` "
-        f"({'✓ Valid' if decision.is_optic_disc_valid else '✗ Invalid'})\n"
-        f"- **Macula**: `{decision.metrics.get('macula_confidence', 0.0) * 100:.0f}% confidence` "
-        f"({'✓ Valid' if decision.is_macula_valid else '✗ Invalid'})\n"
-        f"- **Retinal Distance**: `{decision.metrics.get('distance_dd', 0.0):.2f} DD` "
-        f"({'✓ Anatomical' if decision.is_geometry_valid else '✗ Out of bounds'})\n"
-    )
-
-    captured_frame = frame if decision.should_capture else None
-    action_text = "📸 AUTO-CAPTURE TRIGGERED!" if decision.should_capture else "Searching / Holding focus..."
-
-    return decision.annotated_frame, status_summary, decision.stability_progress, captured_frame, action_text
 
 
 def full_quality_control_inspection(
@@ -1011,7 +1096,7 @@ def build_app() -> gr.Blocks:
                         fundus_input = gr.Image(
                             label="Retinal Fundus Photograph",
                             type="pil",
-                            sources=["upload", "clipboard"],
+                            sources=["upload", "webcam", "clipboard"],
                             height=280,
                         )
 
@@ -1199,11 +1284,31 @@ def build_app() -> gr.Blocks:
             with gr.TabItem("🎯 Real-Time Auto-Capture"):
                 with gr.Row():
                     with gr.Column(scale=5):
-                        input_feed = gr.Image(
-                            label="Live Fundus Camera / Simulated Video Feed",
-                            type="pil",
-                            sources=["upload", "webcam"],
-                        )
+                        with gr.Tabs():
+                            with gr.TabItem("📹 Live Video Stream"):
+                                stream_feed = gr.Image(
+                                    label="Live Retinal Camera Stream (Real-Time Auto-Capture Loop)",
+                                    sources=["webcam"],
+                                    streaming=True,
+                                    type="numpy",
+                                    height=290,
+                                )
+                                gr.Markdown(
+                                    "<small style='color:#94a3b8;'>Live frames are continuously streamed at ~6-8 FPS. When landmarks and focus remain stable across consecutive frames, auto-capture triggers automatically.</small>"
+                                )
+                            with gr.TabItem("📁 Upload / Calibration Presets"):
+                                upload_feed = gr.Image(
+                                    label="Upload Retinal Frame or Test Calibration Pattern",
+                                    type="numpy",
+                                    sources=["upload", "clipboard"],
+                                    height=260,
+                                )
+                                with gr.Row():
+                                    btn_sample_sharp = gr.Button("🟢 Sharp Valid", size="sm")
+                                    btn_sample_blur = gr.Button("🔴 Blurred Frame", size="sm")
+                                    btn_sample_misalign = gr.Button("🟠 Eccentric OD", size="sm")
+                                run_capture_btn = gr.Button("⚡ Evaluate Uploaded Frame", variant="primary")
+
                         with gr.Row():
                             focus_thresh = gr.Slider(
                                 minimum=0.20,
@@ -1221,8 +1326,6 @@ def build_app() -> gr.Blocks:
                             )
                             reset_btn = gr.Checkbox(label="Reset State Buffer", value=False)
 
-                        run_capture_btn = gr.Button("⚡ Evaluate Live Frame", variant="primary")
-
                     with gr.Column(scale=5):
                         stream_hud_display = gr.Image(label="Live Augmented Reality HUD Overlay", type="numpy")
                         stability_bar = gr.Slider(
@@ -1233,13 +1336,54 @@ def build_app() -> gr.Blocks:
                             label="Lock-in Progress",
                         )
                         feedback_box = gr.Markdown(value="Waiting for frame evaluation...")
+                        with gr.Row():
+                            capture_status_badge = gr.Textbox(label="Auto-Capture Action", interactive=False)
                         captured_box = gr.Image(label="Frozen Auto-Captured High-Res Frame", type="numpy")
-                        capture_status_badge = gr.Textbox(label="Auto-Capture Action", interactive=False)
+                        btn_send_to_studio = gr.Button("➡️ Send Auto-Captured Frame to Panel 1 Studio", variant="primary")
+
+                # Real-Time Webcam Streaming Event Loop
+                stream_feed.stream(
+                    fn=process_auto_capture_stream,
+                    inputs=[stream_feed, focus_thresh, lockin_frames, reset_btn],
+                    outputs=[stream_hud_display, feedback_box, stability_bar, captured_box, capture_status_badge],
+                    stream_every=0.15,
+                )
+
+                # Static / Uploaded Frame Evaluation
+                upload_feed.change(
+                    fn=process_auto_capture_stream,
+                    inputs=[upload_feed, focus_thresh, lockin_frames, reset_btn],
+                    outputs=[stream_hud_display, feedback_box, stability_bar, captured_box, capture_status_badge],
+                )
 
                 run_capture_btn.click(
                     fn=process_auto_capture_stream,
-                    inputs=[input_feed, focus_thresh, lockin_frames, reset_btn],
+                    inputs=[upload_feed, focus_thresh, lockin_frames, reset_btn],
                     outputs=[stream_hud_display, feedback_box, stability_bar, captured_box, capture_status_badge],
+                )
+
+                # Preset buttons for immediate calibration testing
+                btn_sample_sharp.click(
+                    fn=lambda: create_demo_fundus(blur_level=0.0),
+                    inputs=[],
+                    outputs=[upload_feed],
+                )
+                btn_sample_blur.click(
+                    fn=lambda: create_demo_fundus(blur_level=4.0),
+                    inputs=[],
+                    outputs=[upload_feed],
+                )
+                btn_sample_misalign.click(
+                    fn=lambda: create_demo_fundus(blur_level=0.0, disc_x=60, disc_y=60),
+                    inputs=[],
+                    outputs=[upload_feed],
+                )
+
+                # Send auto-captured frame directly into Panel 1 Fundus Input
+                btn_send_to_studio.click(
+                    fn=transfer_captured_to_studio,
+                    inputs=[captured_box],
+                    outputs=[fundus_input],
                 )
 
             # ---------------------------------------------------------------

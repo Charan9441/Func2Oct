@@ -100,3 +100,52 @@ def test_app_turing_handlers():
     assert "Ground Truth" in verdict_md
     assert "Cumulative Clinical Turing Test Telemetry" in scoreboard_md
     assert metrics["total_evaluated"] >= 1
+
+
+def test_auto_capture_stream_none_input():
+    """Verifies safe handling of None frame input in streaming loop."""
+    hud, fb, stab, cap, status = app.process_auto_capture_stream(
+        frame=None,
+        focus_thresh=0.50,
+        lockin_frames=3,
+        reset_state=True,
+    )
+    assert hud is not None
+    assert "Waiting for Video Stream" in fb
+    assert stab == 0.0
+    assert status == "Idle / Standby"
+
+
+def test_auto_capture_stream_consecutive_trigger_and_transfer():
+    """Verifies that 3 consecutive valid frames trigger auto-capture and allow transfer to studio."""
+    sharp_frame = app.create_demo_fundus(blur_level=0.0)
+
+    # Reset state
+    app.process_auto_capture_stream(sharp_frame, focus_thresh=0.30, lockin_frames=3, reset_state=True)
+
+    # Frame 1
+    hud1, fb1, stab1, cap1, status1 = app.process_auto_capture_stream(
+        sharp_frame, focus_thresh=0.30, lockin_frames=3, reset_state=False
+    )
+    assert stab1 >= 0.33
+    assert "Focus Clarity" in fb1
+
+    # Frame 2
+    hud2, fb2, stab2, cap2, status2 = app.process_auto_capture_stream(
+        sharp_frame, focus_thresh=0.30, lockin_frames=3, reset_state=False
+    )
+    assert stab2 >= 0.66
+
+    # Frame 3 -> Should trigger capture
+    hud3, fb3, stab3, cap3, status3 = app.process_auto_capture_stream(
+        sharp_frame, focus_thresh=0.30, lockin_frames=3, reset_state=False
+    )
+    assert stab3 >= 1.0
+    assert cap3 is not None
+    assert "AUTO-CAPTURED" in status3
+
+    # Transfer captured frame to Panel 1 Studio
+    transferred = app.transfer_captured_to_studio(cap3)
+    assert transferred is not None
+    assert transferred.size == (512, 512)
+
