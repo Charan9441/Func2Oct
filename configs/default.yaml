@@ -1,0 +1,112 @@
+# Fundus2OCT - Default Configuration
+# Architecture and Research Prototype Settings
+
+project:
+  name: "Fundus2OCT"
+  version: "0.1.0"
+  description: "Conditional Latent Diffusion for Synthetic Retinal OCT Generation from 2D Fundus Photographs"
+  device: "auto"  # "auto", "cuda", or "cpu"
+  seed: 42
+
+paths:
+  data_dir: "data"
+  fundus_dir: "data/fundus"
+  oct_dir: "data/oct"
+  manifest_path: "data/manifests/dataset.csv"
+  checkpoints_dir: "checkpoints"
+  outputs_dir: "outputs"
+  synthetic_oct_dir: "outputs/synthetic_oct"
+  evaluation_reports_dir: "outputs/evaluation_reports"
+  segmentation_masks_dir: "outputs/segmentation_masks"
+
+checkpoints:
+  oct_vae: "checkpoints/oct_vae.pt"
+  fundus_encoder: "checkpoints/fundus_encoder.pt"
+  diffusion: "checkpoints/diffusion.pt"
+  classifier_fundus: "checkpoints/classifier_fundus.pt"
+  classifier_multimodal: "checkpoints/classifier_multimodal.pt"
+
+data:
+  supported_extensions: [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"]
+  oct_mode: "bscan_2d"  # "bscan_2d" or "volume_3d"
+  train_split: 0.70
+  val_split: 0.15
+  test_split: 0.15
+  pairing_rules:
+    strategy: "stem_match"  # "stem_match", "regex_patient_eye", or "metadata_csv"
+    regex_pattern: "(?P<patient_id>[a-zA-Z0-9]+)_(?P<eye>OD|OS|L|R|left|right)"
+
+preprocessing:
+  fundus:
+    image_size: [256, 256]
+    channels: 3
+    preserve_fov: true
+    fov_mask_threshold: 15
+    normalize: "imagenet"  # "imagenet" (mean/std), "unit" [0, 1], or "bipolar" [-1, 1]
+  oct:
+    image_size: [256, 256]
+    channels: 1
+    volume_depth: 16  # For 3D volumetric mode
+    normalize: "bipolar"  # [-1, 1] for diffusion/VAE target
+    invert_colormap: false
+
+quality_control:
+  min_resolution: [128, 128]
+  blur_laplacian_threshold: 50.0  # Images below this are flagged as blurry
+  min_contrast_std: 15.0          # Images below this lack diagnostic dynamic range
+  underexposure_max_percent: 40.0 # Pixel percent < 10
+  overexposure_max_percent: 25.0  # Pixel percent > 245
+
+models:
+  oct_vae:
+    in_channels: 1
+    latent_channels: 4
+    base_channels: 32
+    channel_multipliers: [1, 2, 4, 8]
+    is_3d: false
+    kl_weight: 0.0001
+    learning_rate: 0.0001
+  fundus_encoder:
+    backbone: "baseline_cnn"  # "baseline_cnn", "resnet50", "eyefound_stub"
+    embed_dim: 512
+    spatial_features: true
+    pretrained: false
+  conditional_diffusion:
+    latent_channels: 4
+    cond_dim: 512
+    model_channels: 64
+    channel_multipliers: [1, 2, 4]
+    timesteps: 1000
+    beta_schedule: "linear"
+    beta_start: 0.0001
+    beta_end: 0.02
+    sampling_steps: 50
+    guidance_scale: 2.5
+    is_3d: false
+  classifiers:
+    num_classes: 4  # e.g., Normal, Early AMD, Intermediate AMD, Late AMD
+    backbone: "resnet34"
+    dropout: 0.3
+
+training:
+  batch_size: 8
+  num_workers: 0  # 0 for Windows multiprocessing safety
+  epochs_vae: 50
+  epochs_diffusion: 100
+  epochs_classifier: 30
+  weight_decay: 0.00001
+  save_every: 5
+
+inference:
+  default_candidates: 3
+  max_candidates: 5
+  seed: 42
+  guidance_scale: 2.5
+  steps: 50
+  allow_mock_fallback: false  # When false, strictly refuses to generate random noise if checkpoints are missing
+
+evaluation:
+  enable_fid: false           # Requires min 50 representative samples & trained Inception
+  fid_min_samples: 50
+  calculate_ssim_psnr: true   # Only when spatially aligned reference OCT is provided
+  intensity_profile_bins: 64  # A-scan depth profile analysis

@@ -3,26 +3,59 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyd
 
-# Environments
+# Python Virtual Environments
 .env
+.env.*
 .venv/
+.venv*/
 venv/
+venv*/
 ENV/
 env/
+env*/
 
-# Dataset images (preserve directory structure with .gitkeep)
+# Testing & Linting Caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Package Builds
+build/
+dist/
+*.egg-info/
+
+# API Credentials & Secrets
+kaggle.json
+*.token
+access_token
+secrets.*
+credentials/
+
+# Dataset files & archives (preserve directory structure with .gitkeep)
 data/fundus/*
 !data/fundus/.gitkeep
 data/oct/*
 !data/oct/.gitkeep
+data/raw/*
+data/staging/*
+data/*.zip
+kaggle_armd_*
 
-# Checkpoints / Model weights
-checkpoints/*.pt
-checkpoints/*.pth
-checkpoints/*.onnx
+# Model Checkpoints & Serialized Weights
+checkpoints/*
+!checkpoints/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+*.onnx
 
-# Outputs and staging
+# Outputs and Generated Media
 outputs/synthetic_oct/*
 !outputs/synthetic_oct/.gitkeep
 outputs/segmentation_masks/*
@@ -31,12 +64,13 @@ outputs/evaluation_reports/*
 !outputs/evaluation_reports/.gitkeep
 outputs/demo_assets/*
 !outputs/demo_assets/.gitkeep
-kaggle_armd_*
 *.log
 
-# OS & Editor
+# OS & Editor specific files
 .DS_Store
 Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+*.swp
+*~
