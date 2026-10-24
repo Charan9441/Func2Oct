@@ -246,3 +246,147 @@ class PairedFundusOCTDataset(Dataset):
             "sample_id": item["sample_id"],
             "split": item["split"],
         }
+
+
+class DiseaseClassificationDataset(Dataset):
+    """
+    Dataset for Model A (Fundus-only) and Model B (Fundus + Synthetic OCT) classification.
+    Supports binary (MD vs OTHER) and multi-class classification.
+    Calculates class balance statistics across training splits only.
+    """
+
+    DEFAULT_LABEL_MAP = {"OTHER": 0, "MD": 1}
+
+    def __init__(
+        self,
+        manifest_path: Union[str, Path],
+        mode: str = "fundus_only",  # "fundus_only" or "multimodal"
+        split: Optional[str] = None,
+        synthetic_oct_dir: Optional[Union[str, Path]] = None,
+        label_map: Optional[Dict[str, int]] = None,
+        fundus_size: Tuple[int, int] = (256, 256),
+        oct_size: Tuple[int, int] = (256, 256),
+        fundus_normalize: str = "imagenet",
+        oct_normalize: str = "bipolar",
+        data_root: Optional[Union[str, Path]] = None,
+        synthetic_fallback_count: int = 0,
+    ):
+        super().__init__()
+        self.mode = mode
+        self.split = split
+        self.label_map = label_map or self.DEFAULT_LABEL_MAP
+        self.fundus_size = fundus_size
+        self.oct_size = oct_size
+        self.fundus_normalize = fundus_normalize
+        self.oct_normalize = oct_normalize
+        self.synthetic_fallback_count = synthetic_fallback_count
+        self.synthetic_oct_dir = Path(synthetic_oct_dir) if synthetic_oct_dir else None
+
+        self.samples: List[Dict[str, Any]] = []
+
+        manifest_file = Path(manifest_path)
+        if manifest_file.exists() and manifest_file.stat().st_size > 0:
+            df = pd.read_csv(manifest_file)
+            if "split" in df.columns and split:
+                df = df[df["split"] == split]
+
+            root = Path(data_root) if data_root else Path("data")
+            candidate_f = [root / "fundus", Path("data/fundus"), Path(".")]
+
+            for idx, row in df.iterrows():
+                cls_name = str(row.get("class_name", "OTHER")).upper()
+                if cls_name not in self.label_map:
+                    continue
+
+                label = self.label_map[cls_name]
+                f_raw = str(row.get("fundus_path", ""))
+                f_res = resolve_sample_path(f_raw, candidate_roots=candidate_f)
+
+                if f_res and f_res.exists():
+                    sample_id = str(row.get("normalized_id", row.get("sample_id", idx)))
+                    patient_id = str(row.get("patient_id", f"P_{sample_id}"))
+
+                    # Resolve synthetic OCT path if in multimodal mode
+                    synth_oct_path = None
+                    if self.mode == "multimodal" and self.synthetic_oct_dir:
+                        # Check for {sample_id}_synthetic.png or {sample_id}.png
+                        c1 = self.synthetic_oct_dir / f"{sample_id}_synthetic.png"
+                        c2 = self.synthetic_oct_dir / f"{sample_id}.png"
+                        if c1.exists():
+                            synth_oct_path = c1
+                        elif c2.exists():
+                            synth_oct_path = c2
+
+                    self.samples.append({
+                        "fundus_path": f_res,
+                        "synthetic_oct_path": synth_oct_path,
+                        "label": label,
+                        "class_name": cls_name,
+                        "sample_id": sample_id,
+                        "patient_id": patient_id,
+                        "split": str(row.get("split", "train")),
+                    })
+
+    def __len__(self) -> int:
+        return max(len(self.samples), self.synthetic_fallback_count)
+
+    def get_class_weights(self) -> torch.Tensor:
+        """
+        Calculates balanced class weights: total_samples / (num_classes * class_count).
+        Strictly computed on the available training samples.
+        """
+        if not self.samples:
+            return torch.ones(len(self.label_map), dtype=torch.float32)
+
+        labels = [s["label"] for s in self.samples]
+        counts = np.bincount(labels, minlength=len(self.label_map))
+        total = len(labels)
+        weights = [total / (len(self.label_map) * max(c, 1)) for c in counts]
+        return torch.tensor(weights, dtype=torch.float32)
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        if idx < len(self.samples):
+            item = self.samples[idx]
+            fundus_t = preprocess_fundus(
+                item["fundus_path"],
+                target_size=self.fundus_size,
+                normalize=self.fundus_normalize,
+            )
+
+            # Multimodal OCT branch
+            if self.mode == "multimodal":
+                if item["synthetic_oct_path"] and Path(item["synthetic_oct_path"]).exists():
+                    oct_t = preprocess_oct_bscan(
+                        item["synthetic_oct_path"],
+                        target_size=self.oct_size,
+                        normalize=self.oct_normalize,
+                    )
+                else:
+                    # If synthetic OCT file is not found, return zero tensor and flag
+                    oct_t = torch.zeros((1, self.oct_size[0], self.oct_size[1]), dtype=torch.float32)
+            else:
+                oct_t = torch.empty(0)
+
+            return {
+                "fundus": fundus_t,
+                "oct": oct_t,
+                "label": torch.tensor(item["label"], dtype=torch.long),
+                "class_name": item["class_name"],
+                "sample_id": item["sample_id"],
+                "patient_id": item["patient_id"],
+                "is_synthetic": False,
+            }
+        else:
+            # Synthetic smoke-test sample
+            fundus_t = torch.randn((3, self.fundus_size[0], self.fundus_size[1]))
+            oct_t = torch.randn((1, self.oct_size[0], self.oct_size[1])) if self.mode == "multimodal" else torch.empty(0)
+            label = idx % len(self.label_map)
+            return {
+                "fundus": fundus_t,
+                "oct": oct_t,
+                "label": torch.tensor(label, dtype=torch.long),
+                "class_name": "MD" if label == 1 else "OTHER",
+                "sample_id": f"smoke_{idx}",
+                "patient_id": f"P_smoke_{idx}",
+                "is_synthetic": True,
+            }

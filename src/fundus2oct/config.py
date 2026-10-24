@@ -111,6 +111,18 @@ class EvaluationConfig:
 
 
 @dataclass
+class ClassifierConfig:
+    num_classes: int = 2
+    backbone: str = "custom_cnn"  # "custom_cnn", "resnet18", "resnet34"
+    feature_dim: int = 256
+    dropout: float = 0.3
+    learning_rate: float = 1e-4
+    weight_decay: float = 1e-4
+    epochs: int = 30
+    batch_size: int = 8
+
+
+@dataclass
 class AppConfig:
     project_name: str = "Fundus2OCT"
     version: str = "0.1.0"
@@ -123,6 +135,7 @@ class AppConfig:
     vae: VAEConfig = field(default_factory=VAEConfig)
     fundus_encoder: FundusEncoderConfig = field(default_factory=FundusEncoderConfig)
     diffusion: DiffusionConfig = field(default_factory=DiffusionConfig)
+    classifiers: ClassifierConfig = field(default_factory=ClassifierConfig)
     inference: InferenceConfig = field(default_factory=InferenceConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
 
@@ -213,7 +226,6 @@ def load_config(config_path: Union[str, Path] = "configs/default.yaml") -> AppCo
             cfg.fundus_encoder.backbone = fe.get("backbone", cfg.fundus_encoder.backbone)
             cfg.fundus_encoder.embed_dim = fe.get("embed_dim", cfg.fundus_encoder.embed_dim)
             cfg.fundus_encoder.spatial_features = fe.get("spatial_features", cfg.fundus_encoder.spatial_features)
-            cfg.fundus_encoder.pretrained = fe.get("pretrained", cfg.fundus_encoder.pretrained)
         if "conditional_diffusion" in m:
             cd = m["conditional_diffusion"]
             cfg.diffusion.latent_channels = cd.get("latent_channels", cfg.diffusion.latent_channels)
@@ -227,6 +239,18 @@ def load_config(config_path: Union[str, Path] = "configs/default.yaml") -> AppCo
             cfg.diffusion.sampling_steps = cd.get("sampling_steps", cfg.diffusion.sampling_steps)
             cfg.diffusion.guidance_scale = float(cd.get("guidance_scale", cfg.diffusion.guidance_scale))
             cfg.diffusion.is_3d = cd.get("is_3d", cfg.diffusion.is_3d)
+        if "classifiers" in m:
+            cl = m["classifiers"]
+            cfg.classifiers.num_classes = cl.get("num_classes", cfg.classifiers.num_classes)
+            cfg.classifiers.backbone = cl.get("backbone", cfg.classifiers.backbone)
+            cfg.classifiers.feature_dim = cl.get("feature_dim", cfg.classifiers.feature_dim)
+            cfg.classifiers.dropout = float(cl.get("dropout", cfg.classifiers.dropout))
+
+    if "training" in raw:
+        tr = raw["training"]
+        cfg.classifiers.epochs = tr.get("epochs_classifier", cfg.classifiers.epochs)
+        cfg.classifiers.batch_size = tr.get("batch_size", cfg.classifiers.batch_size)
+        cfg.classifiers.weight_decay = float(tr.get("weight_decay", cfg.classifiers.weight_decay))
 
     if "inference" in raw:
         inf = raw["inference"]

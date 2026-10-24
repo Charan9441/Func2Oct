@@ -84,8 +84,8 @@ models:
     guidance_scale: 2.5
     is_3d: false
   classifiers:
-    num_classes: 4  # e.g., Normal, Early AMD, Intermediate AMD, Late AMD
-    backbone: "resnet34"
+    num_classes: 2  # Binary: 1 = MD (Macular Degeneration), 0 = OTHER (Control)
+    backbone: "custom_cnn"
     dropout: 0.3
 
 training:
