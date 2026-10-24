@@ -537,4 +537,61 @@ def test_preprocess_oct_volume_central_32():
     assert vol_tensor.max() <= 1.0
 
 
+def test_auto_capture_engine_trigger_flow():
+    """Validates real-time auto-capture feedback loop and stability trigger."""
+    from fundus2oct.data.auto_capture import AutoCaptureEngine, GuidanceCue, create_demo_fundus
+
+    engine = AutoCaptureEngine(
+        min_clarity_score=0.40,
+        required_consecutive_frames=3,
+    )
+
+    sharp_frame = create_demo_fundus(blur_level=0.0)
+
+    # Frame 1: Passes, holding steady (1/3)
+    dec1 = engine.process_frame(sharp_frame)
+    assert dec1.is_focus_valid is True
+    assert dec1.should_capture is False
+    assert dec1.consecutive_passes == 1
+    assert dec1.guidance_cue == GuidanceCue.HOLD_STEADY
+
+    # Frame 2: Passes, holding steady (2/3)
+    dec2 = engine.process_frame(sharp_frame)
+    assert dec2.should_capture is False
+    assert dec2.consecutive_passes == 2
+
+    # Frame 3: Stability lock-in met -> TRIGGER CAPTURE!
+    dec3 = engine.process_frame(sharp_frame)
+    assert dec3.should_capture is True
+    assert dec3.consecutive_passes == 3
+    assert dec3.guidance_cue == GuidanceCue.CAPTURE
+    assert dec3.annotated_frame is not None
+
+
+def test_auto_capture_engine_blocks_on_blurred_frame():
+    """Validates that auto-capture rejects blurred frames and instructs focus adjustment."""
+    from fundus2oct.data.auto_capture import AutoCaptureEngine, GuidanceCue, create_demo_fundus
+
+    engine = AutoCaptureEngine(min_clarity_score=0.45)
+    blurred_frame = create_demo_fundus(blur_level=0.9)
+
+    dec = engine.process_frame(blurred_frame)
+    assert dec.should_capture is False
+    assert dec.is_focus_valid is False
+    assert dec.guidance_cue == GuidanceCue.ADJUST_FOCUS
+    assert "focus" in dec.feedback_message.lower()
+
+
+def test_evaluate_auto_capture_frame_convenience():
+    """Validates the convenience wrapper evaluate_auto_capture_frame in quality_control."""
+    from fundus2oct.data.quality_control import evaluate_auto_capture_frame
+    from fundus2oct.data.auto_capture import create_demo_fundus
+
+    frame = create_demo_fundus(blur_level=0.0)
+    decision = evaluate_auto_capture_frame(frame, min_clarity_score=0.40, required_consecutive_frames=1)
+    assert decision.should_capture is True
+    assert decision.is_focus_valid is True
+
+
+
 

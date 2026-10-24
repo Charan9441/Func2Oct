@@ -76,3 +76,7 @@ desktop.ini
 .idea/
 *.swp
 *~
+
+# Nested repository clone
+Func2Oct/
+

@@ -1382,3 +1382,21 @@ def check_fundus_quality(
         geometric_qc=geom_result,
         focus_clarity=clarity_res,
     )
+
+
+def evaluate_auto_capture_frame(
+    frame: Union[np.ndarray, Image.Image],
+    min_clarity_score: float = 0.50,
+    required_consecutive_frames: int = 1,
+) -> Any:
+    """Convenience wrapper to evaluate a frame for real-time auto-capture feedback.
+
+    Validates optic disc, macula, geometry, and Modified Laplacian / Tenengrad focus scores.
+    """
+    from fundus2oct.data.auto_capture import evaluate_auto_capture_frame as _eval_capture
+    return _eval_capture(
+        frame,
+        min_clarity_score=min_clarity_score,
+        required_consecutive_frames=required_consecutive_frames,
+    )
+

@@ -1,15 +1,5 @@
 """Data processing and quality control modules for Func2Oct."""
 
-from .preprocessing import (
-    safe_load_image,
-    center_crop_to_square,
-    extract_retinal_fov_bbox,
-    extract_central_bscans,
-    preprocess_fundus,
-    preprocess_oct_bscan,
-    preprocess_oct_volume,
-    denormalize_to_numpy,
-)
 from .quality_control import (
     QCStatus,
     QCReport,
@@ -32,17 +22,16 @@ from .quality_control import (
     draw_macula,
     draw_geometric_verification,
     draw_focus_clarity,
+    evaluate_auto_capture_frame,
+)
+from .auto_capture import (
+    GuidanceCue,
+    AutoCaptureDecision,
+    AutoCaptureEngine,
+    create_demo_fundus,
 )
 
 __all__ = [
-    "safe_load_image",
-    "center_crop_to_square",
-    "extract_retinal_fov_bbox",
-    "extract_central_bscans",
-    "preprocess_fundus",
-    "preprocess_oct_bscan",
-    "preprocess_oct_volume",
-    "denormalize_to_numpy",
     "QCStatus",
     "QCReport",
     "calculate_laplacian_variance",
@@ -51,6 +40,9 @@ __all__ = [
     "MaculaResult",
     "GeometricVerificationResult",
     "FocusClarityResult",
+    "GuidanceCue",
+    "AutoCaptureDecision",
+    "AutoCaptureEngine",
     "detect_optic_disc",
     "detect_optic_disc_threshold",
     "detect_optic_disc_hough",
@@ -64,4 +56,6 @@ __all__ = [
     "draw_macula",
     "draw_geometric_verification",
     "draw_focus_clarity",
+    "evaluate_auto_capture_frame",
+    "create_demo_fundus",
 ]
