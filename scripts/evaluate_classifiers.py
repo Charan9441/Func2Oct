@@ -362,15 +362,30 @@ def main():
             "accuracy_delta": round(mb["accuracy"] - ma["accuracy"], 4),
             "f1_delta": round(mb["f1_score"] - ma["f1_score"], 4),
         }
+
+        # 4b. Generate comparative uplift artifacts and charts
+        try:
+            from fundus2oct.evaluation.compare_models import compare_model_predictions
+            comp_res = compare_model_predictions(
+                preds_a_input=preds_a_file,
+                preds_b_input=preds_b_file,
+                output_dir=out_dir,
+            )
+            print("\n" + comp_res["report_text"])
+            print("Generated Uplift Artifacts:")
+            for art_name, art_path in comp_res["artifacts"].items():
+                print(f"  * {art_name:<12}: {art_path}")
+        except Exception as err:
+            print(f"[Warning] Could not generate comparative uplift charts: {err}")
     elif model_a_evaluated:
         ma = benchmark_report["models"]["fundus_only"]
         print(f"Model A (Fundus-Only) Results (Test N={ma['total_test_samples']}):")
-        print(f"  • Accuracy          : {ma['accuracy']*100:.1f}%")
-        print(f"  • Balanced Accuracy : {ma['balanced_accuracy']*100:.1f}%")
-        print(f"  • F1 Score          : {ma['f1_score']:.4f}")
-        print(f"  • Recall/Sens       : {ma['recall_sensitivity']*100:.1f}%")
-        print(f"  • Specificity       : {ma['specificity']*100:.1f}%")
-        print(f"  • Confusion Matrix  : {ma['confusion_matrix']}")
+        print(f"  * Accuracy          : {ma['accuracy']*100:.1f}%")
+        print(f"  * Balanced Accuracy : {ma['balanced_accuracy']*100:.1f}%")
+        print(f"  * F1 Score          : {ma['f1_score']:.4f}")
+        print(f"  * Recall/Sens       : {ma['recall_sensitivity']*100:.1f}%")
+        print(f"  * Specificity       : {ma['specificity']*100:.1f}%")
+        print(f"  * Confusion Matrix  : {ma['confusion_matrix']}")
         print("\nModel B (Multimodal) was not evaluated because synthetic OCT checkpoint is pending.")
     else:
         print("No trained checkpoints found to evaluate. Run 'python scripts/train_classifiers.py' first.")
