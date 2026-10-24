@@ -306,3 +306,83 @@ def test_draw_geometric_verification():
     assert annotated.shape == canvas.shape
     assert annotated.dtype == np.uint8
 
+
+def test_compute_modified_laplacian_variance():
+    """Validates that MLV differentiates sharp vs blurred patterns."""
+    from fundus2oct.data.quality_control import compute_modified_laplacian_variance
+    import cv2
+
+    # Sharp image with synthetic edges
+    sharp = np.zeros((200, 200), dtype=np.uint8)
+    for i in range(20, 180, 20):
+        cv2.line(sharp, (i, 20), (i, 180), 220, 2)
+        cv2.line(sharp, (20, i), (180, i), 220, 2)
+
+    blurred = cv2.GaussianBlur(sharp, (21, 21), 6.0)
+
+    mlv_sharp_var, mlv_sharp_mean = compute_modified_laplacian_variance(sharp)
+    mlv_blur_var, mlv_blur_mean = compute_modified_laplacian_variance(blurred)
+
+    assert mlv_sharp_var > 100.0
+    assert mlv_sharp_var > 10.0 * mlv_blur_var
+    assert mlv_sharp_mean > mlv_blur_mean
+
+
+def test_compute_frequency_tenengrad():
+    """Validates frequency domain Tenengrad gradient analysis."""
+    from fundus2oct.data.quality_control import compute_frequency_tenengrad
+    import cv2
+
+    sharp = np.zeros((256, 256), dtype=np.uint8)
+    cv2.circle(sharp, (128, 128), 80, 200, -1)
+    cv2.line(sharp, (50, 50), (200, 200), 255, 3)
+    cv2.line(sharp, (70, 190), (190, 70), 255, 2)
+
+    blurred = cv2.GaussianBlur(sharp, (19, 19), 5.0)
+
+    t_spatial_sharp, hf_sharp, spectral_sharp = compute_frequency_tenengrad(sharp)
+    t_spatial_blur, hf_blur, spectral_blur = compute_frequency_tenengrad(blurred)
+
+    # Spatial Tenengrad
+    assert t_spatial_sharp > t_spatial_blur
+    # High frequency spectral energy ratio
+    assert hf_sharp > hf_blur
+    # Frequency-weighted spectral energy
+    assert spectral_sharp > spectral_blur
+
+
+def test_compute_focus_clarity_score(sample_fundus_image):
+    """Validates composite focus clarity score on clinical/synthetic fundus."""
+    from fundus2oct.data.quality_control import compute_focus_clarity_score, QCStatus
+    import cv2
+
+    fundus_arr = np.array(sample_fundus_image)
+    # Sharp fundus
+    sharp_result = compute_focus_clarity_score(fundus_arr)
+    assert sharp_result.clarity_score >= 0.40
+    assert sharp_result.status in (QCStatus.PASS, QCStatus.WARNING)
+    assert sharp_result.modified_laplacian_variance > 0.0
+    assert sharp_result.tenengrad_spatial > 0.0
+    assert sharp_result.tenengrad_freq_ratio > 0.0
+
+    # Heavily blurred fundus
+    blurred_arr = cv2.GaussianBlur(fundus_arr, (25, 25), 8.0)
+    blurred_result = compute_focus_clarity_score(blurred_arr)
+    assert blurred_result.clarity_score < sharp_result.clarity_score
+    assert blurred_result.status == QCStatus.FAIL
+    assert blurred_result.is_in_focus is False
+    assert any("out-of-focus" in iss.lower() or "blurred" in iss.lower() for iss in blurred_result.issues)
+
+
+def test_draw_focus_clarity(sample_fundus_image):
+    """Validates focus clarity overlay generation."""
+    from fundus2oct.data.quality_control import compute_focus_clarity_score, draw_focus_clarity
+
+    fundus_arr = np.array(sample_fundus_image)
+    clarity_res = compute_focus_clarity_score(fundus_arr)
+    annotated = draw_focus_clarity(fundus_arr, clarity_res)
+
+    assert annotated.shape == fundus_arr.shape
+    assert annotated.dtype == np.uint8
+
+

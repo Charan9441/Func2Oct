@@ -3,7 +3,9 @@ src/fundus2oct/data/quality_control.py
 
 Automated Quality Control (QC) screening for clinical retinal fundus photographs.
 Evaluates blurriness, contrast dynamic range, illumination extremes, resolution,
-optic disc detection, macula/foveal center localization, and geometric anatomical validation.
+optic disc detection, macula/foveal center localization, geometric anatomical validation,
+and comprehensive image focus clarity using modified Laplacian variance and frequency domain
+Tenengrad gradient analysis.
 """
 
 from dataclasses import dataclass, field
@@ -36,6 +38,7 @@ class QCReport:
     issues: List[str] = field(default_factory=list)
     metrics: Dict[str, float] = field(default_factory=dict)
     geometric_qc: Optional["GeometricVerificationResult"] = None
+    focus_clarity: Optional["FocusClarityResult"] = None
 
     def summary_text(self) -> str:
         """Formatted human-readable QC summary."""
@@ -46,6 +49,13 @@ class QCReport:
             f"Contrast (Intensity Std): {self.contrast_std:.1f}",
             f"Underexposed: {self.underexposed_pct:.1f}% | Overexposed: {self.overexposed_pct:.1f}%",
         ]
+        if self.focus_clarity is not None:
+            lines.append(
+                f"Focus Clarity: {self.focus_clarity.status.value} "
+                f"(Score: {self.focus_clarity.clarity_score:.2f}, "
+                f"MLV: {self.focus_clarity.modified_laplacian_variance:.1f}, "
+                f"Tenengrad Spectral: {self.focus_clarity.tenengrad_spectral_energy:.4f})"
+            )
         if self.geometric_qc is not None:
             lines.append(
                 f"Retinal Geometry: {self.geometric_qc.status.value} "
@@ -135,6 +145,32 @@ class GeometricVerificationResult:
     metrics: Dict[str, float] = field(default_factory=dict)
 
 
+@dataclass
+class FocusClarityResult:
+    """Comprehensive image focus clarity score and metrics.
+
+    Attributes:
+        clarity_score: Normalized clarity score in [0.0, 1.0] (1.0 = sharpest focus).
+        is_in_focus: Boolean flag indicating if image meets clinical focus thresholds.
+        status: QCStatus (PASS, WARNING, FAIL).
+        modified_laplacian_variance: Variance of the Modified Laplacian operator (MLV).
+        tenengrad_spatial: Mean squared gradient magnitude (spatial Tenengrad).
+        tenengrad_freq_ratio: High-frequency spectral energy ratio of gradient map.
+        tenengrad_spectral_energy: Frequency-weighted radial spectral gradient power.
+        issues: Clinical issues / feedback warnings.
+        metrics: Detailed metrics dictionary.
+    """
+    clarity_score: float
+    is_in_focus: bool
+    status: QCStatus
+    modified_laplacian_variance: float
+    tenengrad_spatial: float
+    tenengrad_freq_ratio: float
+    tenengrad_spectral_energy: float
+    issues: List[str] = field(default_factory=list)
+    metrics: Dict[str, float] = field(default_factory=dict)
+
+
 def calculate_laplacian_variance(gray_array: np.ndarray) -> float:
     """Computes Laplacian variance as an indicator of focus/sharpness."""
     if gray_array.ndim != 2:
@@ -150,6 +186,292 @@ def calculate_laplacian_variance(gray_array: np.ndarray) -> float:
     )
     laplacian = laplacian[1:-1, 1:-1]
     return float(np.var(laplacian))
+
+
+def compute_modified_laplacian_variance(
+    gray_image: np.ndarray,
+    step: int = 1,
+    mask: Optional[np.ndarray] = None,
+) -> Tuple[float, float]:
+    """Computes Modified Laplacian Variance (MLV) and mean Modified Laplacian.
+
+    The Modified Laplacian (Nayar & Nakagawa) computes the sum of absolute values
+    of discrete second derivatives in horizontal and vertical directions:
+        ML(x, y) = |2*I(x, y) - I(x - step, y) - I(x + step, y)|
+                 + |2*I(x, y) - I(x, y - step) - I(x, y + step)|
+    MLV measures the spread and magnitude of high-frequency edge transitions
+    without sign cancellation artifacts present in standard Laplacian convolution.
+
+    Args:
+        gray_image: 2D uint8 or float grayscale image.
+        step: Pixel step distance for discrete second derivative (default 1).
+        mask: Optional binary mask (e.g. retinal field of view).
+
+    Returns:
+        Tuple of (variance_of_modified_laplacian, mean_of_modified_laplacian).
+    """
+    if gray_image.ndim != 2:
+        raise ValueError("Expected 2D grayscale array for Modified Laplacian.")
+
+    img = gray_image.astype(np.float32)
+
+    kx = np.zeros((3, 3), dtype=np.float32)
+    kx[1, 0] = 1.0
+    kx[1, 1] = -2.0
+    kx[1, 2] = 1.0
+
+    ky = np.zeros((3, 3), dtype=np.float32)
+    ky[0, 1] = 1.0
+    ky[1, 1] = -2.0
+    ky[2, 1] = 1.0
+
+    lx = np.abs(cv2.filter2D(img, -1, kx, borderType=cv2.BORDER_REFLECT))
+    ly = np.abs(cv2.filter2D(img, -1, ky, borderType=cv2.BORDER_REFLECT))
+    ml = lx + ly
+
+    if mask is not None:
+        valid = (mask > 0)
+        border_mask = np.zeros_like(valid, dtype=bool)
+        border_mask[2:-2, 2:-2] = True
+        combined_mask = valid & border_mask
+        if np.any(combined_mask):
+            ml_vals = ml[combined_mask]
+            return float(np.var(ml_vals)), float(np.mean(ml_vals))
+
+    inner = ml[2:-2, 2:-2]
+    return float(np.var(inner)), float(np.mean(inner))
+
+
+def compute_frequency_tenengrad(
+    gray_image: np.ndarray,
+    hf_cutoff: float = 0.15,
+    mask: Optional[np.ndarray] = None,
+) -> Tuple[float, float, float]:
+    """Computes spatial Tenengrad gradient and frequency-domain spectral gradient power.
+
+    Combines spatial Sobel gradient magnitude with 2D Fast Fourier Transform (FFT)
+    spectral analysis to quantify high-frequency radial energy concentration:
+        1. Spatial Tenengrad: Mean squared gradient magnitude G_x^2 + G_y^2.
+        2. High-Frequency Spectral Ratio: Ratio of gradient spectral power above
+           radial cutoff frequency relative to total spectral power.
+        3. Frequency-Weighted Tenengrad Energy: Sum of r^2 * |F(u, v)|^2 / P_total.
+
+    Args:
+        gray_image: 2D grayscale array.
+        hf_cutoff: Normalized radial frequency cutoff [0, 1] for high-frequency band.
+        mask: Optional binary mask.
+
+    Returns:
+        Tuple of (spatial_tenengrad, hf_power_ratio, spectral_gradient_energy).
+    """
+    if gray_image.ndim != 2:
+        raise ValueError("Expected 2D grayscale array for frequency Tenengrad analysis.")
+
+    gray = gray_image.astype(np.float32)
+    h, w = gray.shape
+
+    # 1. Spatial Sobel gradient
+    gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+    grad_sq = gx ** 2 + gy ** 2
+    grad_mag = np.sqrt(grad_sq)
+
+    if mask is not None:
+        valid = (mask > 0)
+        border_mask = np.zeros_like(valid, dtype=bool)
+        border_mask[2:-2, 2:-2] = True
+        combined = valid & border_mask
+        if np.any(combined):
+            spatial_tenengrad = float(np.mean(grad_sq[combined]))
+            analysis_map = grad_mag.copy()
+            analysis_map[~combined] = 0.0
+        else:
+            spatial_tenengrad = float(np.mean(grad_sq))
+            analysis_map = grad_mag
+    else:
+        spatial_tenengrad = float(np.mean(grad_sq[2:-2, 2:-2]))
+        analysis_map = grad_mag
+
+    # 2. 2D FFT Spectral Analysis with 2D Hann window
+    hann_y = np.hanning(h)
+    hann_x = np.hanning(w)
+    window_2d = np.outer(hann_y, hann_x).astype(np.float32)
+
+    windowed_grad = analysis_map * window_2d
+    f_transform = np.fft.fft2(windowed_grad)
+    f_shift = np.fft.fftshift(f_transform)
+    power_spectrum = np.abs(f_shift) ** 2
+
+    # Radial frequency coordinate map [0, 1]
+    cy, cx = h // 2, w // 2
+    y_coords, x_coords = np.ogrid[:h, :w]
+    max_radius = float(np.hypot(cx, cy))
+    radial_dist = np.sqrt((x_coords - cx) ** 2 + (y_coords - cy) ** 2) / max_radius
+
+    total_power = float(np.sum(power_spectrum)) + 1e-9
+
+    # High-frequency power ratio
+    hf_power = float(np.sum(power_spectrum[radial_dist >= hf_cutoff]))
+    hf_power_ratio = float(hf_power / total_power)
+
+    # Frequency-weighted spectral Tenengrad energy: sum(r^2 * |F(u, v)|^2) / P_total
+    spectral_energy = float(np.sum((radial_dist ** 2) * power_spectrum) / total_power)
+
+    return spatial_tenengrad, hf_power_ratio, spectral_energy
+
+
+def compute_focus_clarity_score(
+    image: Union[np.ndarray, Image.Image],
+    mlv_tau: float = 350.0,
+    tenengrad_tau: float = 1500.0,
+    freq_tau: float = 0.15,
+    pass_threshold: float = 0.55,
+    warning_threshold: float = 0.35,
+    mask_aperture_margin: bool = True,
+) -> FocusClarityResult:
+    """Compute a comprehensive image focus clarity score using modified Laplacian variance and frequency domain Tenengrad gradient analysis.
+
+    Harmonizes spatial edge sharpness (Modified Laplacian Variance), gradient
+    energy (Tenengrad), and spectral frequency distribution (2D Fourier analysis).
+
+    Args:
+        image: Input fundus image (PIL.Image or numpy array).
+        mlv_tau: Characteristic scale parameter for MLV score normalization.
+        tenengrad_tau: Characteristic scale parameter for spatial Tenengrad normalization.
+        freq_tau: Characteristic scale parameter for frequency energy normalization.
+        pass_threshold: Minimum composite score for PASS status (default 0.55).
+        warning_threshold: Minimum composite score for WARNING status (default 0.35).
+        mask_aperture_margin: If True, masks outer camera aperture edge to avoid
+            artificial gradient inflation from circular borders.
+
+    Returns:
+        FocusClarityResult with normalized clarity score [0.0, 1.0], clinical status,
+        and detailed metrics.
+    """
+    uint8_img = _ensure_uint8_image(image)
+
+    # Extract Green channel (highest vessel/macular sharpness contrast)
+    if uint8_img.ndim == 3:
+        gray = uint8_img[:, :, 1] if uint8_img.shape[2] >= 2 else cv2.cvtColor(uint8_img, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = uint8_img
+
+    h, w = gray.shape[:2]
+
+    # Inner retinal FOV mask to exclude camera aperture edge
+    retinal_mask = None
+    if mask_aperture_margin:
+        raw_mask = (gray > 15).astype(np.uint8)
+        # Erode mask to discard sharp circular aperture perimeter
+        erode_k = max(5, int(min(h, w) * 0.03))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (erode_k, erode_k))
+        retinal_mask = cv2.erode(raw_mask, kernel)
+
+    # 1. Modified Laplacian Variance (MLV)
+    mlv_var, mlv_mean = compute_modified_laplacian_variance(gray, mask=retinal_mask)
+
+    # 2. Frequency Domain Tenengrad Analysis
+    tenengrad_spatial, hf_ratio, spectral_energy = compute_frequency_tenengrad(
+        gray, hf_cutoff=0.15, mask=retinal_mask
+    )
+
+    # 3. Monotonic Sub-Score Normalization
+    s_mlv = float(1.0 - np.exp(-max(0.0, mlv_var) / max(1e-4, mlv_tau)))
+    s_tenengrad = float(1.0 - np.exp(-max(0.0, tenengrad_spatial) / max(1e-4, tenengrad_tau)))
+    s_freq = float(1.0 - np.exp(-max(0.0, spectral_energy) / max(1e-4, freq_tau)))
+
+    # Weighted composite clarity score [0.0, 1.0]
+    clarity_score = float(0.40 * s_mlv + 0.30 * s_tenengrad + 0.30 * s_freq)
+    clarity_score = float(np.clip(clarity_score, 0.0, 1.0))
+
+    # Clinical status determination
+    issues: List[str] = []
+    if clarity_score >= pass_threshold:
+        status = QCStatus.PASS
+        is_in_focus = True
+    elif clarity_score >= warning_threshold:
+        status = QCStatus.WARNING
+        is_in_focus = True
+        issues.append(
+            f"Image exhibits mild focus softening (clarity score: {clarity_score:.2f} < {pass_threshold:.2f})."
+        )
+    else:
+        status = QCStatus.FAIL
+        is_in_focus = False
+        issues.append(
+            f"Image is out-of-focus or severely blurred (clarity score: {clarity_score:.2f} < {warning_threshold:.2f})."
+        )
+
+    if mlv_var < (mlv_tau * 0.1):
+        issues.append(f"Spatial Modified Laplacian Variance is low ({mlv_var:.1f}).")
+    if spectral_energy < (freq_tau * 0.1):
+        issues.append(f"Frequency-domain high-frequency spectral energy is deficient ({spectral_energy:.4f}).")
+
+    metrics = {
+        "clarity_score": clarity_score,
+        "modified_laplacian_variance": mlv_var,
+        "modified_laplacian_mean": mlv_mean,
+        "tenengrad_spatial": tenengrad_spatial,
+        "tenengrad_freq_ratio": hf_ratio,
+        "tenengrad_spectral_energy": spectral_energy,
+        "sub_score_mlv": s_mlv,
+        "sub_score_tenengrad": s_tenengrad,
+        "sub_score_freq": s_freq,
+    }
+
+    return FocusClarityResult(
+        clarity_score=clarity_score,
+        is_in_focus=is_in_focus,
+        status=status,
+        modified_laplacian_variance=mlv_var,
+        tenengrad_spatial=tenengrad_spatial,
+        tenengrad_freq_ratio=hf_ratio,
+        tenengrad_spectral_energy=spectral_energy,
+        issues=issues,
+        metrics=metrics,
+    )
+
+
+def draw_focus_clarity(
+    image: np.ndarray,
+    clarity_result: FocusClarityResult,
+    thickness: int = 2,
+) -> np.ndarray:
+    """Draw comprehensive focus clarity metrics dashboard on fundus image."""
+    canvas = _ensure_uint8_image(image)
+    if canvas.ndim == 2:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)
+    elif canvas.shape[2] == 1:
+        canvas = cv2.cvtColor(canvas[:, :, 0], cv2.COLOR_GRAY2BGR)
+
+    status_colors = {
+        QCStatus.PASS: (0, 200, 0),       # Green
+        QCStatus.WARNING: (0, 215, 255),  # Yellow/Gold
+        QCStatus.FAIL: (0, 0, 255),       # Red
+    }
+    badge_color = status_colors.get(clarity_result.status, (255, 255, 255))
+
+    h, w = canvas.shape[:2]
+    cv2.rectangle(canvas, (10, h - 50), (min(w - 10, 560), h - 10), (20, 20, 20), -1)
+    cv2.rectangle(canvas, (10, h - 50), (min(w - 10, 560), h - 10), badge_color, 1)
+
+    banner_text = (
+        f"FOCUS CLARITY: {clarity_result.status.value} ({clarity_result.clarity_score * 100:.1f}%) | "
+        f"MLV: {clarity_result.modified_laplacian_variance:.1f} | "
+        f"Freq Spec: {clarity_result.tenengrad_spectral_energy:.4f}"
+    )
+    cv2.putText(
+        canvas,
+        banner_text,
+        (18, h - 25),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        badge_color,
+        1,
+        lineType=cv2.LINE_AA,
+    )
+
+    return canvas
 
 
 def _ensure_uint8_image(image: Union[np.ndarray, Image.Image]) -> np.ndarray:
@@ -758,33 +1080,7 @@ def verify_optic_disc_macula_geometry(
     fail_angle_deviation_deg: float = 30.0,
     expected_laterality: Optional[str] = None,
 ) -> GeometricVerificationResult:
-    """Validate Euclidean distance and angle between optic disc and macula against standardized retinal anatomical tolerances.
-
-    Clinical Standards:
-        - Distance: In standard human retinal anatomy, the fovea centralis lies approximately
-          2.5 to 3.0 disc diameters (DD) from the optic disc center. The standard normal
-          tolerance is [2.0, 3.5] DD. Values in [1.8, 2.0) or (3.5, 4.0] are flagged as warnings,
-          and values < 1.8 or > 4.0 DD represent anatomical failures.
-        - Angle: The fovea is located temporally within +/-15 degrees of the horizontal meridian
-          passing through the optic disc center. Deviations > 30 degrees or nasal positioning
-          represent anatomical landmark failures.
-
-    Args:
-        optic_disc: OpticDiscResult, (x, y) tuple, or dict with 'center' and 'radius'.
-        macula: MaculaResult, (x, y) tuple, or dict with 'center'.
-        od_radius: Explicit optic disc radius in pixels (required if optic_disc is a tuple).
-        distance_dd_min: Minimum normal distance in disc diameters (default 2.0).
-        distance_dd_max: Maximum normal distance in disc diameters (default 3.5).
-        distance_dd_fail_min: Minimum allowable threshold before failure (default 1.8).
-        distance_dd_fail_max: Maximum allowable threshold before failure (default 4.0).
-        max_angle_deviation_deg: Maximum allowable deviation from temporal horizontal (default 15.0°).
-        fail_angle_deviation_deg: Angle deviation triggering FAIL status (default 30.0°).
-        expected_laterality: Optional expected eye ('OD' for Right Eye, 'OS' for Left Eye).
-
-    Returns:
-        GeometricVerificationResult with status (PASS, WARNING, FAIL), metrics, and clinical issues.
-    """
-    # 1. Parse Optic Disc coordinates and radius
+    """Validate Euclidean distance and angle between optic disc and macula against standardized retinal anatomical tolerances."""
     if isinstance(optic_disc, OpticDiscResult):
         od_x, od_y = optic_disc.center
         r_od = float(optic_disc.radius)
@@ -800,7 +1096,6 @@ def verify_optic_disc_macula_geometry(
     else:
         raise TypeError(f"Unsupported optic_disc type: {type(optic_disc)}")
 
-    # 2. Parse Macula coordinates
     if isinstance(macula, MaculaResult):
         mx, my = macula.center
     elif isinstance(macula, dict):
@@ -811,7 +1106,6 @@ def verify_optic_disc_macula_geometry(
     else:
         raise TypeError(f"Unsupported macula type: {type(macula)}")
 
-    # 3. Compute Euclidean Distance
     dx = float(mx - od_x)
     dy = float(my - od_y)
     dist_px = float(np.hypot(dx, dy))
@@ -819,7 +1113,6 @@ def verify_optic_disc_macula_geometry(
     od_diameter = max(1.0, 2.0 * r_od)
     dist_dd = float(dist_px / od_diameter)
 
-    # 4. Compute Vector Angle and Inferred Laterality
     angle_rad = np.arctan2(dy, dx)
     angle_deg = float(np.degrees(angle_rad))  # [-180, 180]
 
@@ -833,7 +1126,7 @@ def verify_optic_disc_macula_geometry(
     issues: List[str] = []
     status = QCStatus.PASS
 
-    # 5. Distance Validation Checks
+    # Distance Validation Checks
     if dist_dd < distance_dd_fail_min:
         issues.append(
             f"Distance between OD and macula is critically short: {dist_dd:.2f} DD "
@@ -861,7 +1154,7 @@ def verify_optic_disc_macula_geometry(
         if status != QCStatus.FAIL:
             status = QCStatus.WARNING
 
-    # 6. Angle Validation Checks
+    # Angle Validation Checks
     if angle_deviation > fail_angle_deviation_deg:
         issues.append(
             f"Optic disc-to-macula angular deviation ({angle_deviation:.1f}°) exceeds "
@@ -876,7 +1169,7 @@ def verify_optic_disc_macula_geometry(
         if status != QCStatus.FAIL:
             status = QCStatus.WARNING
 
-    # 7. Laterality Consistency Check
+    # Laterality Consistency Check
     if expected_laterality is not None:
         expected_norm = expected_laterality.upper().strip()
         if expected_norm in ("OD", "RIGHT", "R") and inferred_laterality != "OD":
@@ -965,7 +1258,7 @@ def check_fundus_quality(
     verify_geometry: bool = False,
     expected_laterality: Optional[str] = None,
 ) -> QCReport:
-    """Screens retinal fundus image for clinical suitability, quality degradations, and landmark geometry."""
+    """Screens retinal fundus image for clinical suitability, quality degradations, focus clarity, and landmark geometry."""
     cfg = config or QualityControlConfig()
     try:
         pil_img = safe_load_image(image_input, expected_channels=3)
@@ -998,12 +1291,24 @@ def check_fundus_quality(
     if blur_score < cfg.blur_laplacian_threshold:
         issues.append(f"Image appears blurred/out-of-focus (sharpness: {blur_score:.1f} < threshold {cfg.blur_laplacian_threshold})")
 
-    # 3. Contrast check
+    # 3. Comprehensive Focus Clarity Score (Modified Laplacian Variance + Frequency Tenengrad)
+    clarity_res = compute_focus_clarity_score(np_img)
+    if clarity_res.status == QCStatus.FAIL:
+        issues.append(
+            f"Focus clarity score is low ({clarity_res.clarity_score:.2f} < 0.35, "
+            f"MLV={clarity_res.modified_laplacian_variance:.1f})."
+        )
+    elif clarity_res.status == QCStatus.WARNING:
+        issues.append(
+            f"Focus clarity score is borderline ({clarity_res.clarity_score:.2f})."
+        )
+
+    # 4. Contrast check
     contrast_std = float(np.std(gray))
     if contrast_std < cfg.min_contrast_std:
         issues.append(f"Low contrast dynamic range (std: {contrast_std:.1f} < threshold {cfg.min_contrast_std})")
 
-    # 4. Illumination extremes
+    # 5. Illumination extremes
     total_pixels = gray.size
     under_count = np.sum(gray < 10)
     over_count = np.sum(gray > 245)
@@ -1017,7 +1322,7 @@ def check_fundus_quality(
     if over_pct > cfg.overexposure_max_percent:
         issues.append(f"Excessive glare or overexposure ({over_pct:.1f}% > {cfg.overexposure_max_percent}%)")
 
-    # 5. Optional Retinal Landmark Geometric QC
+    # 6. Optional Retinal Landmark Geometric QC
     geom_result = None
     if verify_geometry:
         try:
@@ -1034,10 +1339,10 @@ def check_fundus_quality(
                 issues.append(f"[Geometric QC] {g_issue}")
         except Exception as ge:
             issues.append(f"[Geometric QC] Landmark detection failed: {ge}")
-            if status != QCStatus.FAIL:
-                status = QCStatus.WARNING
+            if not is_fail:
+                issues.append("[Geometric QC] Quality degraded due to landmark failure.")
 
-    # Determine status
+    # Determine overall status
     if is_fail or (geom_result is not None and geom_result.status == QCStatus.FAIL):
         status = QCStatus.FAIL
         is_valid = False
@@ -1055,6 +1360,11 @@ def check_fundus_quality(
         "overexposed_pct": over_pct,
         "width": float(w),
         "height": float(h),
+        "focus_clarity_score": clarity_res.clarity_score,
+        "focus_mlv": clarity_res.modified_laplacian_variance,
+        "focus_tenengrad_spatial": clarity_res.tenengrad_spatial,
+        "focus_tenengrad_freq_ratio": clarity_res.tenengrad_freq_ratio,
+        "focus_tenengrad_spectral_energy": clarity_res.tenengrad_spectral_energy,
     }
     if geom_result is not None:
         metrics.update({f"geom_{k}": v for k, v in geom_result.metrics.items()})
@@ -1070,4 +1380,5 @@ def check_fundus_quality(
         issues=issues,
         metrics=metrics,
         geometric_qc=geom_result,
+        focus_clarity=clarity_res,
     )
