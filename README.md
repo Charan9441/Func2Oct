@@ -29,21 +29,21 @@ $$\text{Fundus Image } (2D) \longrightarrow \text{Latent Diffusion Model } p_\th
 
 ```mermaid
 flowchart TD
-    subgraph Data Pipeline
-        A["2D Color Fundus<br/>(RGB, 256×256)"] --> B["Quality Control<br/>(Blur, Contrast, FOV Crop)"]
+    subgraph DP ["Data Pipeline"]
+        A["2D Color Fundus<br/>(RGB, 256x256)"] --> B["Quality Control<br/>(Blur, Contrast, FOV Crop)"]
         B --> C["Fundus Encoder<br/>(Visual Conditioning Space)"]
     end
 
-    subgraph Latent Generative Process
-        C -->|Conditioning c ∈ ℝ⁵¹²| D["Conditional Latent Diffusion<br/>(UNet Denoising Engine)"]
-        N["Gaussian Latent Noise<br/>z_T ~ 𝒩(0, I)"] --> D
-        D -->|Iterative Sampling<br/>t = T → 0| E["Synthetic OCT Latent<br/>z₀ ∈ ℝ⁴ˣ³²ˣ³²"]
+    subgraph LGP ["Latent Generative Process"]
+        C -->|"Conditioning c (512-d)"| D["Conditional Latent Diffusion<br/>(UNet Denoising Engine)"]
+        N["Gaussian Latent Noise<br/>(z_T ~ N(0, I))"] --> D
+        D -->|"Iterative Sampling (t = T to 0)"| E["Synthetic OCT Latent<br/>(z_0: 4x32x32)"]
     end
 
-    subgraph Reconstruction & Output
+    subgraph RO ["Reconstruction and Output"]
         E --> F["OCT VAE Decoder"]
-        F --> G["Synthetic OCT B-Scan<br/>(1×256×256)"]
-        G --> H["Gradio Visualizer<br/>& Disagreement Heatmaps"]
+        F --> G["Synthetic OCT B-Scan<br/>(1x256x256)"]
+        G --> H["Gradio Visualizer<br/>and Disagreement Heatmaps"]
         G --> I["Quantitative Evaluation<br/>(PSNR, SSIM, Depth Profiles)"]
     end
 ```
