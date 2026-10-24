@@ -24,6 +24,20 @@ from .pipeline import (
     Fundus2OCTPipeline,
     GeneratorNotReadyError,
 )
+from .classifier_fundus import (
+    FundusClassifier,
+    EyeFoundFundusClassifier,
+    build_fundus_classifier,
+)
+from .classifier_multimodal import (
+    MultimodalClassifier,
+    Multimodal3DClassifier,
+    EyeFoundOCT3DClassifier,
+    ConvBlock3D,
+    OCT3DEncoder,
+    MultimodalFusion,
+    build_multimodal_classifier,
+)
 
 __all__ = [
     "FundusEncoder",
@@ -43,5 +57,15 @@ __all__ = [
     "load_diffusion_checkpoint",
     "Fundus2OCTPipeline",
     "GeneratorNotReadyError",
+    "FundusClassifier",
+    "EyeFoundFundusClassifier",
+    "build_fundus_classifier",
+    "MultimodalClassifier",
+    "Multimodal3DClassifier",
+    "EyeFoundOCT3DClassifier",
+    "ConvBlock3D",
+    "OCT3DEncoder",
+    "MultimodalFusion",
+    "build_multimodal_classifier",
 ]
 

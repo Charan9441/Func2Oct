@@ -1,0 +1,201 @@
+{
+  "manifest_version": "1.0",
+  "benchmark_title": "Func2OCT Clinical Turing Discrimination Benchmark",
+  "regulatory_framework": "CDSCO Medical Device Rules 2017 (Rule 51 - Investigational SaMD)",
+  "created_timestamp": "2026-10-24T17:25:55.930918",
+  "total_cases": 12,
+  "cases": [
+    {
+      "case_id": "OCT-TR-R001",
+      "image_filename": "sample_OCT-TR-R001.png",
+      "ground_truth": "Real OCT",
+      "pathology": "Normal Macula",
+      "difficulty": "Moderate",
+      "retinal_landmarks": [
+        "ILM",
+        "RNFL",
+        "IS/OS Ellipsoid Zone",
+        "RPE/Bruch's",
+        "Choriocapillaris"
+      ],
+      "clinical_pearls": "Genuine In-Vivo Scan. Preserved foveal depression with continuous IS/OS junction and hyperreflective RPE band.",
+      "artifact_cues": "Natural optical speckle distribution and authentic backscattering signal decay into choroid."
+    },
+    {
+      "case_id": "OCT-TR-R002",
+      "image_filename": "sample_OCT-TR-R002.png",
+      "ground_truth": "Real OCT",
+      "pathology": "Dry AMD (Drusen)",
+      "difficulty": "Challenging",
+      "retinal_landmarks": [
+        "ILM",
+        "RNFL",
+        "IS/OS Ellipsoid Zone",
+        "RPE/Bruch's",
+        "Choriocapillaris"
+      ],
+      "clinical_pearls": "Genuine In-Vivo Scan. Nodular dome-shaped hyperreflective sub-RPE deposits causing retinal elevation.",
+      "artifact_cues": "Natural optical speckle distribution and authentic backscattering signal decay into choroid."
+    },
+    {
+      "case_id": "OCT-TR-R003",
+      "image_filename": "sample_OCT-TR-R003.png",
+      "ground_truth": "Real OCT",
+      "pathology": "Wet AMD / Subretinal Fluid",
+      "difficulty": "Moderate",
+      "retinal_landmarks": [
+        "ILM",
+        "RNFL",
+        "IS/OS Ellipsoid Zone",
+        "RPE/Bruch's",
+        "Choriocapillaris"
+      ],
+      "clinical_pearls": "Genuine In-Vivo Scan. Hyporeflective subretinal fluid accumulation with disrupted outer retinal layers.",
+      "artifact_cues": "Natural optical speckle distribution and authentic backscattering signal decay into choroid."
+    },
+    {
+      "case_id": "OCT-TR-R004",
+      "image_filename": "sample_OCT-TR-R004.png",
+      "ground_truth": "Real OCT",
+      "pathology": "Epiretinal Membrane",
+      "difficulty": "Challenging",
+      "retinal_landmarks": [
+        "ILM",
+        "RNFL",
+        "IS/OS Ellipsoid Zone",
+        "RPE/Bruch's",
+        "Choriocapillaris"
+      ],
+      "clinical_pearls": "Genuine In-Vivo Scan. Hyperreflective pre-retinal membrane wrinkling inner limiting membrane (ILM).",
+      "artifact_cues": "Natural optical speckle distribution and authentic backscattering signal decay into choroid."
+    },
+    {
+      "case_id": "OCT-TR-R005",
+      "image_filename": "sample_OCT-TR-R005.png",
+      "ground_truth": "Real OCT",
+      "pathology": "Geographic Atrophy",
+      "difficulty": "Moderate",
+      "retinal_landmarks": [
+        "ILM",
+        "RNFL",
+        "IS/OS Ellipsoid Zone",
+        "RPE/Bruch's",
+        "Choriocapillaris"
+      ],
+      "clinical_pearls": "Genuine In-Vivo Scan. Extensive loss of outer retinal bands and RPE with enhanced choroidal transmission.",
+      "artifact_cues": "Natural optical speckle distribution and authentic backscattering signal decay into choroid."
+    },
+    {
+      "case_id": "OCT-TR-R006",
+      "image_filename": "sample_OCT-TR-R006.png",
+      "ground_truth": "Real OCT",
+      "pathology": "Macular Edema",
+      "difficulty": "Challenging",
+      "retinal_landmarks": [
+        "ILM",
+        "RNFL",
+        "IS/OS Ellipsoid Zone",
+        "RPE/Bruch's",
+        "Choriocapillaris"
+      ],
+      "clinical_pearls": "Genuine In-Vivo Scan. Hyporeflective cystoid spaces inside the inner nuclear and outer plexiform layers.",
+      "artifact_cues": "Natural optical speckle distribution and authentic backscattering signal decay into choroid."
+    },
+    {
+      "case_id": "OCT-TR-S001",
+      "image_filename": "sample_OCT-TR-S001.png",
+      "ground_truth": "Synthetic OCT",
+      "pathology": "Wet AMD / Subretinal Fluid",
+      "difficulty": "Challenging",
+      "retinal_landmarks": [
+        "Synthesized ILM",
+        "Inner Plexiform",
+        "Ellipsoid Zone",
+        "RPE Band",
+        "Diffusion Choroid"
+      ],
+      "clinical_pearls": "LVDM Generative Diffusion Output. Hyporeflective subretinal fluid accumulation with disrupted outer retinal layers.",
+      "artifact_cues": "Subtle diffusion smoothing in deep choroid; slightly elevated layer boundary regularity; uniform speckle frequency compared to clinical hardware shot noise."
+    },
+    {
+      "case_id": "OCT-TR-S002",
+      "image_filename": "sample_OCT-TR-S002.png",
+      "ground_truth": "Synthetic OCT",
+      "pathology": "Epiretinal Membrane",
+      "difficulty": "Moderate",
+      "retinal_landmarks": [
+        "Synthesized ILM",
+        "Inner Plexiform",
+        "Ellipsoid Zone",
+        "RPE Band",
+        "Diffusion Choroid"
+      ],
+      "clinical_pearls": "LVDM Generative Diffusion Output. Hyperreflective pre-retinal membrane wrinkling inner limiting membrane (ILM).",
+      "artifact_cues": "Subtle diffusion smoothing in deep choroid; slightly elevated layer boundary regularity; uniform speckle frequency compared to clinical hardware shot noise."
+    },
+    {
+      "case_id": "OCT-TR-S003",
+      "image_filename": "sample_OCT-TR-S003.png",
+      "ground_truth": "Synthetic OCT",
+      "pathology": "Geographic Atrophy",
+      "difficulty": "Challenging",
+      "retinal_landmarks": [
+        "Synthesized ILM",
+        "Inner Plexiform",
+        "Ellipsoid Zone",
+        "RPE Band",
+        "Diffusion Choroid"
+      ],
+      "clinical_pearls": "LVDM Generative Diffusion Output. Extensive loss of outer retinal bands and RPE with enhanced choroidal transmission.",
+      "artifact_cues": "Subtle diffusion smoothing in deep choroid; slightly elevated layer boundary regularity; uniform speckle frequency compared to clinical hardware shot noise."
+    },
+    {
+      "case_id": "OCT-TR-S004",
+      "image_filename": "sample_OCT-TR-S004.png",
+      "ground_truth": "Synthetic OCT",
+      "pathology": "Macular Edema",
+      "difficulty": "Moderate",
+      "retinal_landmarks": [
+        "Synthesized ILM",
+        "Inner Plexiform",
+        "Ellipsoid Zone",
+        "RPE Band",
+        "Diffusion Choroid"
+      ],
+      "clinical_pearls": "LVDM Generative Diffusion Output. Hyporeflective cystoid spaces inside the inner nuclear and outer plexiform layers.",
+      "artifact_cues": "Subtle diffusion smoothing in deep choroid; slightly elevated layer boundary regularity; uniform speckle frequency compared to clinical hardware shot noise."
+    },
+    {
+      "case_id": "OCT-TR-S005",
+      "image_filename": "sample_OCT-TR-S005.png",
+      "ground_truth": "Synthetic OCT",
+      "pathology": "Normal Macula",
+      "difficulty": "Challenging",
+      "retinal_landmarks": [
+        "Synthesized ILM",
+        "Inner Plexiform",
+        "Ellipsoid Zone",
+        "RPE Band",
+        "Diffusion Choroid"
+      ],
+      "clinical_pearls": "LVDM Generative Diffusion Output. Preserved foveal depression with continuous IS/OS junction and hyperreflective RPE band.",
+      "artifact_cues": "Subtle diffusion smoothing in deep choroid; slightly elevated layer boundary regularity; uniform speckle frequency compared to clinical hardware shot noise."
+    },
+    {
+      "case_id": "OCT-TR-S006",
+      "image_filename": "sample_OCT-TR-S006.png",
+      "ground_truth": "Synthetic OCT",
+      "pathology": "Dry AMD (Drusen)",
+      "difficulty": "Moderate",
+      "retinal_landmarks": [
+        "Synthesized ILM",
+        "Inner Plexiform",
+        "Ellipsoid Zone",
+        "RPE Band",
+        "Diffusion Choroid"
+      ],
+      "clinical_pearls": "LVDM Generative Diffusion Output. Nodular dome-shaped hyperreflective sub-RPE deposits causing retinal elevation.",
+      "artifact_cues": "Subtle diffusion smoothing in deep choroid; slightly elevated layer boundary regularity; uniform speckle frequency compared to clinical hardware shot noise."
+    }
+  ]
+}

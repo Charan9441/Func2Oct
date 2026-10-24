@@ -66,6 +66,10 @@ outputs/evaluation_reports/*
 !outputs/evaluation_reports/.gitkeep
 outputs/demo_assets/*
 !outputs/demo_assets/.gitkeep
+!outputs/demo_assets/*.py
+!outputs/demo_assets/*.md
+!outputs/demo_assets/*.json
+!outputs/demo_assets/samples/
 *.log
 
 # OS & Editor specific files
