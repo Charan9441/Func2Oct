@@ -58,6 +58,8 @@ checkpoints/*
 # Outputs and Generated Media
 outputs/synthetic_oct/*
 !outputs/synthetic_oct/.gitkeep
+outputs/oct_latents/*
+!outputs/oct_latents/.gitkeep
 outputs/segmentation_masks/*
 !outputs/segmentation_masks/.gitkeep
 outputs/evaluation_reports/*
