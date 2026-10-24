@@ -13,9 +13,12 @@ import torch
 
 from fundus2oct.data.preprocessing import (
     safe_load_image,
+    center_crop_to_square,
     extract_retinal_fov_bbox,
+    extract_central_bscans,
     preprocess_fundus,
     preprocess_oct_bscan,
+    preprocess_oct_volume,
     denormalize_to_numpy,
 )
 from fundus2oct.data.quality_control import (
@@ -307,6 +310,7 @@ def test_draw_geometric_verification():
     assert annotated.dtype == np.uint8
 
 
+
 def test_compute_modified_laplacian_variance():
     """Validates that MLV differentiates sharp vs blurred patterns."""
     from fundus2oct.data.quality_control import compute_modified_laplacian_variance
@@ -384,5 +388,153 @@ def test_draw_focus_clarity(sample_fundus_image):
 
     assert annotated.shape == fundus_arr.shape
     assert annotated.dtype == np.uint8
+
+# ---------------------------------------------------------------------------
+# Unit Tests: Center-crop to Square, Central 32 B-Scans, & 256x256 Resizing
+# ---------------------------------------------------------------------------
+
+def test_center_crop_to_square_pil():
+    """Validates that PIL images (wide, tall, and square) are center-cropped to squares."""
+    # 1. Wide image (2144 x 1424, real fundus aspect ratio)
+    wide_img = Image.new("RGB", (2144, 1424), color=(200, 100, 50))
+    cropped_wide = center_crop_to_square(wide_img)
+    assert cropped_wide.size == (1424, 1424)
+
+    # 2. Tall image (600 x 900)
+    tall_img = Image.new("RGB", (600, 900), color=(100, 150, 200))
+    cropped_tall = center_crop_to_square(tall_img)
+    assert cropped_tall.size == (600, 600)
+
+    # 3. Already square image (512 x 512)
+    sq_img = Image.new("RGB", (512, 512), color=(50, 50, 50))
+    cropped_sq = center_crop_to_square(sq_img)
+    assert cropped_sq.size == (512, 512)
+
+
+def test_center_crop_to_square_numpy():
+    """Validates center cropping for 2D and 3D NumPy arrays."""
+    # 2D array: (H=300, W=500)
+    arr_2d = np.zeros((300, 500), dtype=np.uint8)
+    cropped_2d = center_crop_to_square(arr_2d)
+    assert cropped_2d.shape == (300, 300)
+
+    # 3D HWC array: (H=400, W=600, C=3)
+    arr_hwc = np.zeros((400, 600, 3), dtype=np.uint8)
+    cropped_hwc = center_crop_to_square(arr_hwc)
+    assert cropped_hwc.shape == (400, 400, 3)
+
+    # 3D CHW array: (C=3, H=500, W=300)
+    arr_chw = np.zeros((3, 500, 300), dtype=np.uint8)
+    cropped_chw = center_crop_to_square(arr_chw)
+    assert cropped_chw.shape == (3, 300, 300)
+
+
+def test_center_crop_to_square_tensor():
+    """Validates center cropping for PyTorch tensors."""
+    # (C, H, W): (3, 200, 350)
+    t_chw = torch.randn(3, 200, 350)
+    cropped_t = center_crop_to_square(t_chw)
+    assert cropped_t.shape == (3, 200, 200)
+
+    # Batched (B, C, H, W): (4, 1, 400, 300)
+    t_bchw = torch.randn(4, 1, 400, 300)
+    cropped_bt = center_crop_to_square(t_bchw)
+    assert cropped_bt.shape == (4, 1, 300, 300)
+
+
+def test_extract_central_bscans_greater_than_32():
+    """Validates central 32 B-scans extraction from volume with D > 32."""
+    # Volume with 49 slices, H=100, W=100
+    # Each slice labeled by its slice index
+    vol = np.zeros((49, 100, 100), dtype=np.float32)
+    for i in range(49):
+        vol[i] = float(i)
+
+    # Extract central 32 B-scans and resize spatially to (256, 256)
+    out = extract_central_bscans(vol, num_scans=32, target_size=(256, 256))
+    assert out.shape == (32, 256, 256)
+
+    # Verify slices extracted are indeed the central ones: start = (49 - 32) // 2 = 8
+    # Slice 0 of output corresponds to slice 8 of original
+    expected_start_val = (49 - 32) // 2  # 8
+    assert np.isclose(out[0, 0, 0], expected_start_val)
+    assert np.isclose(out[-1, 0, 0], expected_start_val + 31)
+
+
+def test_extract_central_bscans_equal_32():
+    """Validates that a volume with exactly 32 B-scans preserves all slices."""
+    vol = np.random.randn(32, 128, 128).astype(np.float32)
+    out = extract_central_bscans(vol, num_scans=32, target_size=(256, 256))
+    assert out.shape == (32, 256, 256)
+
+
+def test_extract_central_bscans_less_than_32():
+    """Validates symmetric edge padding when volume depth D < 32."""
+    vol = np.zeros((16, 80, 80), dtype=np.float32)
+    for i in range(16):
+        vol[i] = float(i + 1)  # 1 to 16
+
+    out = extract_central_bscans(vol, num_scans=32, target_size=(256, 256), pad_mode="edge")
+    assert out.shape == (32, 256, 256)
+
+    # Padded before: (32 - 16) // 2 = 8 slices of value 1.0
+    assert np.isclose(out[0, 0, 0], 1.0)
+    assert np.isclose(out[7, 0, 0], 1.0)
+    # Original first slice at index 8
+    assert np.isclose(out[8, 0, 0], 1.0)
+    # Original last slice at index 23
+    assert np.isclose(out[23, 0, 0], 16.0)
+    # Padded after slices of value 16.0
+    assert np.isclose(out[-1, 0, 0], 16.0)
+
+
+def test_extract_central_bscans_tensor():
+    """Validates central 32 extraction on PyTorch tensors."""
+    t_vol = torch.randn(64, 150, 150)
+    out = extract_central_bscans(t_vol, num_scans=32, target_size=(256, 256))
+    assert isinstance(out, torch.Tensor)
+    assert out.shape == (32, 256, 256)
+
+
+def test_extract_central_bscans_list_of_images():
+    """Validates extracting central 32 B-scans from a list of 2D images."""
+    img_list = [Image.new("L", (100, 100), color=i) for i in range(40)]
+    out = extract_central_bscans(img_list, num_scans=32, target_size=(256, 256))
+    assert isinstance(out, np.ndarray)
+    assert out.shape == (32, 256, 256)
+
+
+def test_preprocess_fundus_center_crop_and_resize_256():
+    """Validates full fundus preprocessing: center-crop square + resize to 256x256."""
+    # Wide image simulating typical fundus camera output (e.g., 2144 x 1424)
+    wide_fundus = Image.new("RGB", (2144, 1424), color=(180, 80, 40))
+    tensor = preprocess_fundus(
+        wide_fundus,
+        target_size=(256, 256),
+        center_crop=True,
+        normalize="bipolar",
+    )
+    assert isinstance(tensor, torch.Tensor)
+    assert tensor.shape == (3, 256, 256)
+    assert tensor.dtype == torch.float32
+    assert -1.0 <= tensor.min() <= 1.0
+    assert -1.0 <= tensor.max() <= 1.0
+
+
+def test_preprocess_oct_volume_central_32():
+    """Validates full OCT volume preprocessing: central 32 B-scans + resize to (1, 32, 256, 256)."""
+    raw_vol = np.random.randint(0, 256, (60, 200, 200), dtype=np.uint8)
+    vol_tensor = preprocess_oct_volume(
+        raw_vol,
+        target_shape=(32, 256, 256),
+        num_scans=32,
+        normalize="bipolar",
+    )
+    assert isinstance(vol_tensor, torch.Tensor)
+    assert vol_tensor.shape == (1, 32, 256, 256)
+    assert vol_tensor.dtype == torch.float32
+    assert vol_tensor.min() >= -1.0
+    assert vol_tensor.max() <= 1.0
+
 
 

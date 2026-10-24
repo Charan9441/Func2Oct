@@ -1,5 +1,15 @@
 """Data processing and quality control modules for Func2Oct."""
 
+from .preprocessing import (
+    safe_load_image,
+    center_crop_to_square,
+    extract_retinal_fov_bbox,
+    extract_central_bscans,
+    preprocess_fundus,
+    preprocess_oct_bscan,
+    preprocess_oct_volume,
+    denormalize_to_numpy,
+)
 from .quality_control import (
     QCStatus,
     QCReport,
@@ -25,6 +35,14 @@ from .quality_control import (
 )
 
 __all__ = [
+    "safe_load_image",
+    "center_crop_to_square",
+    "extract_retinal_fov_bbox",
+    "extract_central_bscans",
+    "preprocess_fundus",
+    "preprocess_oct_bscan",
+    "preprocess_oct_volume",
+    "denormalize_to_numpy",
     "QCStatus",
     "QCReport",
     "calculate_laplacian_variance",

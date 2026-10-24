@@ -67,10 +67,10 @@ models:
     kl_weight: 0.0001
     learning_rate: 0.0001
   fundus_encoder:
-    backbone: "baseline_cnn"  # "baseline_cnn", "resnet50", "eyefound_stub"
+    backbone: "eyefound"  # "eyefound", "baseline_cnn", "resnet50"
     embed_dim: 512
     spatial_features: true
-    pretrained: false
+    pretrained: true
   conditional_diffusion:
     latent_channels: 4
     cond_dim: 512
@@ -84,8 +84,8 @@ models:
     guidance_scale: 2.5
     is_3d: false
   classifiers:
-    num_classes: 4  # e.g., Normal, Early AMD, Intermediate AMD, Late AMD
-    backbone: "resnet34"
+    num_classes: 2  # Binary: 1 = MD (Macular Degeneration), 0 = OTHER (Control)
+    backbone: "custom_cnn"
     dropout: 0.3
 
 training:
