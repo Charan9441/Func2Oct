@@ -4,7 +4,9 @@ src/fundus2oct/evaluation/__init__.py
 Evaluation, validation, and benchmarking package for Fund2Oct:
 - Reconstruction metrics: MSE, MAE, PSNR, SSIM, and target benchmark tracking (MSE <= 0.0089, MAE <= 0.0587).
 - Comparative disease classification: Model A (Fundus) vs. Model B (Multimodal), AUROC uplift (4-8% target).
-- Generative fidelity metrics: Fréchet Inception Distance (FID), Fréchet Volume Distance (FVD), Axial Depth Profiles.
+- Generative fidelity metrics: Fréchet Inception Distance (FID), Fréchet Video/Volume Distance (FVD), Slice-wise depth FID.
+- Model interpretability: Grad-CAM gradient-weighted class activation mapping and retinal layer attribution.
+- Predictive uncertainty: Monte Carlo Dropout (epistemic/aleatoric uncertainty, entropy, mutual information, safety flags).
 """
 
 from .metrics import (
@@ -29,15 +31,20 @@ from .compare_models import (
     validate_inputs,
 )
 from .fid_fvd import (
-    OCT2DFeatureExtractor,
-    OCT3DVolumeFeatureExtractor,
-    calculate_frechet_distance,
-    compute_axial_depth_profile,
+    FIDCalculator,
+    FVDCalculator,
+    InceptionV3FeatureExtractor,
+    SimpleFeatureExtractor2D,
+    SimpleFeatureExtractor3D,
+    Volume3DFeatureExtractor,
+    compute_activation_statistics,
     compute_fid,
+    compute_fid_from_features,
+    compute_frechet_distance,
     compute_fvd,
-    create_mock_oct_pairs,
-    evaluate_depth_profile_fidelity,
-    evaluate_paired_generation,
+    compute_fvd_from_features,
+    compute_slice_wise_fid,
+    evaluate_generative_distributions,
 )
 from .gradcam import (
     GradCAM,
@@ -75,16 +82,21 @@ __all__ = [
     "plot_auroc_uplift",
     "plot_metrics_comparison",
     "validate_inputs",
-    # Generative Fidelity (FID/FVD/Depth Profile)
-    "OCT2DFeatureExtractor",
-    "OCT3DVolumeFeatureExtractor",
-    "calculate_frechet_distance",
-    "compute_axial_depth_profile",
+    # Generative Metrics: FID & FVD
+    "compute_frechet_distance",
+    "compute_activation_statistics",
+    "compute_fid_from_features",
+    "compute_fvd_from_features",
     "compute_fid",
     "compute_fvd",
-    "evaluate_depth_profile_fidelity",
-    "evaluate_paired_generation",
-    "create_mock_oct_pairs",
+    "compute_slice_wise_fid",
+    "evaluate_generative_distributions",
+    "InceptionV3FeatureExtractor",
+    "Volume3DFeatureExtractor",
+    "SimpleFeatureExtractor2D",
+    "SimpleFeatureExtractor3D",
+    "FIDCalculator",
+    "FVDCalculator",
     # Interpretability & Grad-CAM
     "GradCAM",
     "GradCAMResult",
@@ -99,4 +111,3 @@ __all__ = [
     "discover_dropout_modules",
     "NoDropoutLayersError",
 ]
-

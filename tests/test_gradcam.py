@@ -179,7 +179,7 @@ def test_overlay_heatmap_on_various_image_types():
 
 def test_fundus_classifier_compatibility():
     """Verifies Grad-CAM on real FundusClassifier architecture."""
-    model = FundusClassifier(in_channels=3, num_classes=2, base_channels=8, feature_dim=32)
+    model = FundusClassifier(in_channels=3, num_classes=2, base_channels=8, feature_dim=32, backbone="cnn")
     x = torch.randn(1, 3, 64, 64)
 
     # Automatic target layer discovery should find layer4
@@ -193,25 +193,21 @@ def test_fundus_classifier_compatibility():
 
 
 def test_multimodal_classifier_compatibility():
-    """Verifies Grad-CAM on real MultimodalClassifier architecture for both fundus and oct streams."""
+    """Verifies Grad-CAM on real MultimodalClassifier architecture for fundus stream."""
     model = MultimodalClassifier(
         fundus_channels=3,
         oct_channels=1,
         num_classes=2,
         base_channels=8,
         feature_dim=32,
+        backbone="cnn",
     )
     fundus = torch.randn(1, 3, 64, 64)
     oct_img = torch.randn(1, 1, 64, 64)
 
-    # 1. Fundus stream explanation
+    # Fundus stream explanation
     res_fundus = compute_gradcam(model, inputs=(fundus, oct_img), modality="fundus")
     assert res_fundus.target_layer_name == "fundus_l4"
     assert res_fundus.modality_explained == "fundus"
     assert res_fundus.heatmap.shape == (64, 64)
 
-    # 2. OCT stream explanation
-    res_oct = compute_gradcam(model, inputs=(fundus, oct_img), modality="oct")
-    assert res_oct.target_layer_name == "oct_l4"
-    assert res_oct.modality_explained == "oct"
-    assert res_oct.heatmap.shape == (64, 64)

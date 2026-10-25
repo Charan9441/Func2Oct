@@ -64,6 +64,8 @@ outputs/segmentation_masks/*
 !outputs/segmentation_masks/.gitkeep
 outputs/evaluation_reports/*
 !outputs/evaluation_reports/.gitkeep
+outputs/interactive_cache/*
+!outputs/interactive_cache/.gitkeep
 outputs/demo_assets/*
 !outputs/demo_assets/.gitkeep
 *.log

@@ -55,6 +55,81 @@ def test_multimodal_classifier_shapes():
     assert torch.isfinite(logits).all()
 
 
+def test_multimodal_3d_classifier_volumetric_shapes():
+    """Verifies Model B 3D CNN embeddings of 32-slice and 16-slice OCT volumes with EyeFound features."""
+    model = MultimodalClassifier(
+        fundus_channels=3,
+        oct_channels=1,
+        num_classes=2,
+        feature_dim=256,
+        embed_dim=512,
+        backbone="eyefound",
+    )
+    model.eval()
+
+    # Case 1: Full 32-slice synthetic 3D OCT volume (B=2, C=1, D=32, H=256, W=256)
+    fundus_img = torch.randn(2, 3, 256, 256)
+    oct_vol_32 = torch.randn(2, 1, 32, 256, 256)
+
+    with torch.no_grad():
+        logits_32 = model(fundus_img, oct_vol_32)
+        f_fundus, f_oct_32, f_fused = model.extract_multimodal_features(fundus_img, oct_vol_32)
+        proba_32 = model.predict_proba(fundus_img, oct_vol_32)
+
+    assert logits_32.shape == (2, 2)
+    assert f_fundus.shape == (2, 256)
+    assert f_oct_32.shape == (2, 256)
+    assert f_fused.shape == (2, 256)
+    assert torch.allclose(proba_32.sum(dim=-1), torch.ones(2), atol=1e-5)
+
+    # Case 2: Precomputed EyeFound embeddings (B=2, 512) with 16-slice 3D volume
+    eyefound_emb = torch.randn(2, 512)
+    oct_vol_16 = torch.randn(2, 1, 16, 128, 128)
+
+    with torch.no_grad():
+        logits_emb = model(eyefound_emb, oct_vol_16)
+        proba_emb = model.predict_proba(eyefound_emb, oct_vol_16)
+
+    assert logits_emb.shape == (2, 2)
+    assert torch.allclose(proba_emb.sum(dim=-1), torch.ones(2), atol=1e-5)
+
+
+def test_multimodal_classifier_checkpoint_roundtrip(tmp_path):
+    """Verifies that Model B checkpoint saving and loading maintains state dict fidelity."""
+    model = MultimodalClassifier(
+        fundus_channels=3,
+        oct_channels=1,
+        num_classes=2,
+        feature_dim=128,
+        base_channels=16,
+    )
+    ckpt_path = tmp_path / "test_multimodal.pt"
+
+    model.save_checkpoint(ckpt_path, epoch=5, val_loss=0.45, val_acc=0.82)
+    assert ckpt_path.exists()
+    assert ckpt_path.stat().st_size > 1024
+
+    loaded_model = MultimodalClassifier(
+        fundus_channels=3,
+        oct_channels=1,
+        num_classes=2,
+        feature_dim=128,
+        base_channels=16,
+    )
+    loaded_model.load_checkpoint(ckpt_path)
+    assert loaded_model.is_trained is True
+
+    # Check forward pass equivalence in eval mode (no dropout)
+    model.eval()
+    loaded_model.eval()
+    x_f = torch.randn(1, 3, 256, 256)
+    x_o = torch.randn(1, 1, 16, 128, 128)
+    with torch.no_grad():
+        orig_out = model(x_f, x_o)
+        loaded_out = loaded_model(x_f, x_o)
+    assert torch.allclose(orig_out, loaded_out, atol=1e-5)
+
+
 def test_pipeline_integrity_guard_when_untrained():
     """Ensures pipeline raises GeneratorNotReadyError when diffusion weights are untrained."""
     pipeline = Fundus2OCTPipeline()

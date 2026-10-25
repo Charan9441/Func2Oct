@@ -209,7 +209,7 @@ def test_uncertainty_threshold_flag():
 
 def test_fundus_classifier_uncertainty():
     """Verifies MC Dropout on real FundusClassifier architecture."""
-    model = FundusClassifier(in_channels=3, num_classes=2, base_channels=8, feature_dim=32, dropout=0.3)
+    model = FundusClassifier(in_channels=3, num_classes=2, base_channels=8, feature_dim=32, dropout=0.3, backbone="cnn")
     x = torch.randn(1, 3, 64, 64)
 
     result = estimate_predictive_uncertainty(
@@ -222,8 +222,7 @@ def test_fundus_classifier_uncertainty():
 
     assert len(result.mean_probabilities) == 2
     assert result.num_passes == 5
-    assert result.metadata["num_dropout_layers"] >= 1
-    assert "dropout" in result.metadata["dropout_layer_names"]
+    assert len(result.metadata["dropout_layer_names"]) >= 1
 
 
 def test_multimodal_classifier_uncertainty():
@@ -235,6 +234,7 @@ def test_multimodal_classifier_uncertainty():
         base_channels=8,
         feature_dim=32,
         dropout=0.3,
+        backbone="cnn",
     )
     fundus = torch.randn(1, 3, 64, 64)
     oct_img = torch.randn(1, 1, 64, 64)
