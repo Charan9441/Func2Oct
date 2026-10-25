@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 from PIL import Image
 import torch
+import cv2
 
 # Ensure src/ is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
@@ -186,14 +187,16 @@ def synthesize_realistic_3d_oct_volume(
     the 512-dim visual conditioning embedding from the paired fundus image.
 
     Simulates micron-resolution cross-sectional retinal layer architecture:
-    - Inner Limiting Membrane (ILM) & Retinal Nerve Fiber Layer (RNFL)
-    - Foveal pit depression contour centered across the slice sweep
-    - Inner/Outer Plexiform & Nuclear layers (IPL, INL, OPL, ONL)
-    - Photoreceptor Inner/Outer Segment junction (IS/OS) & ELM
-    - Highly reflective Retinal Pigment Epithelium (RPE) & Bruch's Membrane
-    - Choroidal vascular layer with signal attenuation
-    - Drusen elevations & hyperreflective foci for Macular Degeneration (MD)
-    - Optical coherence speckle noise texture
+    - Anatomical posterior pole curvature (gentle ocular arc across B-scan)
+    - Inner Limiting Membrane (ILM) & Retinal Nerve Fiber Layer (RNFL) with nasal wedge
+    - Centrifugal displacement of inner layers (GCL/IPL) at the foveal pit
+    - Distinct nuclear and plexiform layers (INL, OPL, ONL)
+    - External Limiting Membrane (ELM) & Ellipsoid Zone (EZ / IS-OS junction)
+    - Hyper-reflective Retinal Pigment Epithelium (RPE) & Bruch's Membrane complex
+    - Major retinal vessel attenuation shadows (hyporeflective vertical columns)
+    - Choroid with Haller/Sattler hyporeflective vascular lumens & depth decay
+    - Pathological drusenoid mounds & hyperreflective foci for Macular Degeneration (MD)
+    - Multiplicative optical coherence speckle with lateral PSF correlation
     """
     rng = np.random.RandomState(seed)
     cond_norm = float(torch.norm(conditioning_vector).item() % 1.0)
@@ -204,70 +207,171 @@ def synthesize_realistic_3d_oct_volume(
     x_coords = np.linspace(-1.0, 1.0, w)
     z_coords = np.linspace(-1.0, 1.0, num_slices)
 
-    # Base retina geometry
-    base_retina_y = 110.0 + (cond_norm * 8.0)
-    retina_thickness = 42.0
+    # Anatomical posterior pole curvature (gentle downward parabolic arc towards periphery)
+    ocular_curvature = 6.0 * (x_coords ** 2)
+    base_retina_y = 108.0 + (cond_norm * 6.0) + ocular_curvature
+    total_retina_thickness = 46.0
+
+    # Vessel x-positions casting optical shadow trails (major retinal vessels)
+    vessel_x_positions = [-0.62, -0.38, 0.48, 0.72]
+
+    # Pre-generate choroidal vessel flow voids (large elliptical lumens in Haller's/Sattler's layer)
+    choroid_vessels = []
+    num_vessels = 14
+    for _ in range(num_vessels):
+        vx = rng.uniform(-0.9, 0.9)
+        vy_offset = rng.uniform(8.0, 36.0)  # depth below RPE
+        rx = rng.uniform(8.0, 18.0)        # horizontal radius
+        ry = rng.uniform(4.0, 9.0)         # vertical radius
+        choroid_vessels.append((vx, vy_offset, rx, ry))
+
+    # Pre-compute Y grid for fast 2D broadcasting: shape (h, 1)
+    y_grid_col = np.arange(h, dtype=np.float32)[:, None]
 
     for z_idx, z in enumerate(z_coords):
-        # Distance from central foveal B-scan slice (z = 0 is center)
         dist_from_fovea_z = abs(z)
-        # Foveal pit profile (deepest at z=0, x=0)
-        fovea_depth = max(0.0, 1.0 - (dist_from_fovea_z / 0.55))
-        pit_depression = 18.0 * fovea_depth * np.exp(-((x_coords / 0.28) ** 2))
+        fovea_depth = max(0.0, 1.0 - (dist_from_fovea_z / 0.58))
+        foveal_pit = 22.0 * fovea_depth * np.exp(-((x_coords / 0.25) ** 2))
 
-        # Layer vertical boundaries
-        ilm_y = base_retina_y + pit_depression
-        rpe_y = np.full_like(x_coords, base_retina_y + retina_thickness)
+        # Surface boundaries
+        ilm_y = base_retina_y + foveal_pit
+        rpe_y = base_retina_y + total_retina_thickness
 
-        # Pathology: Drusen elevations in RPE for MD cases
+        # AMD Pathology: Nodular / dome-shaped sub-RPE drusen mounds
+        drusen_mask = np.zeros_like(x_coords)
         if class_name == "MD":
-            drusen_envelope = fovea_depth * 8.5 * np.sin(x_coords * 9.0 + z * 3.0) ** 2
+            drusen_envelope = (
+                fovea_depth * 9.0 * (np.sin(x_coords * 8.5 + z * 2.5) ** 2)
+                + 4.0 * np.exp(-(((x_coords - 0.08) / 0.12) ** 2))
+                + 3.5 * np.exp(-(((x_coords + 0.14) / 0.10) ** 2))
+            )
             rpe_y = rpe_y - drusen_envelope
+            drusen_mask = drusen_envelope
 
-        slice_img = np.zeros((h, w), dtype=np.float32)
+        effective_thickness = np.maximum(8.0, rpe_y - ilm_y)
 
-        # Vitreous cavity optical backscatter (low intensity)
-        slice_img += rng.normal(8.0, 2.5, (h, w))
+        # Histological boundary curves
+        nasal_wedge = np.clip(1.0 - (x_coords * 0.4), 0.6, 1.4)
+        rnfl_thick = (0.16 * effective_thickness * (1.0 - 0.75 * fovea_depth * np.exp(-((x_coords / 0.28) ** 2)))) * nasal_wedge
+        rnfl_gcl_y = ilm_y + rnfl_thick
 
-        # Synthesize retinal layers
-        for y_idx in range(h):
-            dist_from_ilm = y_idx - ilm_y
-            dist_from_rpe = y_idx - rpe_y
+        foveal_thinning = 1.0 - 0.90 * fovea_depth * np.exp(-((x_coords / 0.22) ** 2))
+        gcl_ipl_thick = 0.24 * effective_thickness * foveal_thinning
+        ipl_inl_y = rnfl_gcl_y + (0.5 * gcl_ipl_thick)
+        inl_opl_y = rnfl_gcl_y + gcl_ipl_thick
 
-            # Intra-retinal layers between ILM and RPE
-            in_retina = (dist_from_ilm >= 0) & (dist_from_rpe <= 0)
-            if np.any(in_retina):
-                rel_depth = (y_idx - ilm_y[in_retina]) / np.maximum(1.0, rpe_y[in_retina] - ilm_y[in_retina])
-                # Layer reflectivity profile:
-                # RNFL (top, bright), Nuclear layers (dark), Plexiform (intermediate)
-                layer_refl = 45.0 + 35.0 * np.sin(rel_depth * np.pi * 3.0) ** 2
-                slice_img[y_idx, in_retina] = layer_refl
+        opl_onl_y = ilm_y + 0.62 * effective_thickness
+        elm_y = rpe_y - 10.0
+        isos_y = rpe_y - 6.0
+        bm_y = rpe_y + 4.5
 
-            # Hyper-reflective ILM boundary
-            ilm_band = np.abs(dist_from_ilm) < 1.8
-            slice_img[y_idx, ilm_band] = np.maximum(slice_img[y_idx, ilm_band], 140.0)
+        # Strict non-crossing constraints
+        rnfl_gcl_y = np.clip(rnfl_gcl_y, ilm_y + 1, rpe_y - 12)
+        ipl_inl_y = np.clip(ipl_inl_y, rnfl_gcl_y + 1, rpe_y - 10)
+        inl_opl_y = np.clip(inl_opl_y, ipl_inl_y + 1, rpe_y - 8)
+        opl_onl_y = np.clip(opl_onl_y, inl_opl_y + 1, rpe_y - 6)
+        elm_y = np.clip(elm_y, opl_onl_y + 1, rpe_y - 4)
+        isos_y = np.clip(isos_y, elm_y + 1, rpe_y - 2)
 
-            # Hyper-reflective IS/OS photoreceptor junction
-            isos_band = np.abs(dist_from_rpe + 6.0) < 1.5
-            slice_img[y_idx, isos_band] = np.maximum(slice_img[y_idx, isos_band], 180.0)
+        # Base vitreous optical backscatter
+        slice_img = rng.normal(7.0, 2.0, (h, w)).astype(np.float32)
 
-            # Highly reflective RPE / Bruch's membrane band
-            rpe_band = np.abs(dist_from_rpe) < 2.5
-            slice_img[y_idx, rpe_band] = np.maximum(slice_img[y_idx, rpe_band], 225.0)
+        # Layer 1: RNFL (hyperreflective)
+        rnfl_mask = (y_grid_col >= ilm_y) & (y_grid_col < rnfl_gcl_y)
+        slice_img[rnfl_mask] = rng.normal(125.0, 14.0, size=np.count_nonzero(rnfl_mask))
 
-            # Choroid layer below RPE (granular medium reflectivity with depth decay)
-            below_rpe = dist_from_rpe > 0
-            if np.any(below_rpe):
-                decay = np.exp(-dist_from_rpe[below_rpe] / 22.0)
-                choroid_refl = (85.0 * decay) + rng.normal(0, 12.0, size=np.sum(below_rpe))
-                slice_img[y_idx, below_rpe] = np.clip(choroid_refl, 0, 160)
+        # Layer 2: GCL (hyporeflective)
+        gcl_mask = (y_grid_col >= rnfl_gcl_y) & (y_grid_col < ipl_inl_y)
+        slice_img[gcl_mask] = rng.normal(48.0, 8.0, size=np.count_nonzero(gcl_mask))
 
-        # Add speckle scattering noise
-        speckle = rng.normal(1.0, 0.12, (h, w))
-        slice_img = np.clip(slice_img * speckle, 0.0, 255.0)
+        # Layer 3: IPL (hyperreflective)
+        ipl_mask = (y_grid_col >= ipl_inl_y) & (y_grid_col < inl_opl_y)
+        slice_img[ipl_mask] = rng.normal(92.0, 10.0, size=np.count_nonzero(ipl_mask))
+
+        # Layer 4: INL (hyporeflective)
+        inl_mask = (y_grid_col >= inl_opl_y) & (y_grid_col < opl_onl_y)
+        slice_img[inl_mask] = rng.normal(38.0, 7.0, size=np.count_nonzero(inl_mask))
+
+        # Layer 5: OPL (moderately hyperreflective) & ONL (dark hyporeflective thick band)
+        mid_outer = (opl_onl_y + elm_y) / 2.0
+        opl_mask = (y_grid_col >= opl_onl_y) & (y_grid_col < mid_outer)
+        slice_img[opl_mask] = rng.normal(98.0, 11.0, size=np.count_nonzero(opl_mask))
+
+        onl_mask = (y_grid_col >= mid_outer) & (y_grid_col < elm_y)
+        slice_img[onl_mask] = rng.normal(30.0, 6.0, size=np.count_nonzero(onl_mask))
+
+        # Intervening myoid zone (ELM to IS/OS)
+        myoid_mask = (y_grid_col >= elm_y) & (y_grid_col < isos_y)
+        slice_img[myoid_mask] = rng.normal(55.0, 9.0, size=np.count_nonzero(myoid_mask))
+
+        # Outer photoreceptor segments (IS/OS to RPE)
+        outer_mask = (y_grid_col >= isos_y) & (y_grid_col < rpe_y)
+        slice_img[outer_mask] = rng.normal(85.0, 12.0, size=np.count_nonzero(outer_mask))
+
+        # Layer 6: Hyperreflective IS/OS (Ellipsoid Zone / EZ) band
+        ez_mask = np.abs(y_grid_col - isos_y) <= 1.2
+        if np.any(ez_mask):
+            ez_vals = rng.normal(195.0, 12.0, size=np.count_nonzero(ez_mask))
+            slice_img[ez_mask] = np.maximum(slice_img[ez_mask], ez_vals)
+
+        # Layer 7: RPE / Bruch's Membrane complex
+        rpe_complex_mask = (y_grid_col >= rpe_y) & (y_grid_col <= bm_y)
+        if np.any(rpe_complex_mask):
+            slice_img[rpe_complex_mask] = rng.normal(235.0, 15.0, size=np.count_nonzero(rpe_complex_mask))
+
+        # Layer 8: Choroid with depth attenuation
+        choroid_mask = y_grid_col > bm_y
+        if np.any(choroid_mask):
+            depth_below_bm = np.maximum(0.0, y_grid_col - bm_y)
+            decay = np.exp(-depth_below_bm / 24.0)
+            stroma = (95.0 * decay) + rng.normal(0, 10.0, size=(h, w))
+            slice_img[choroid_mask] = np.clip(stroma[choroid_mask], 0, 170)
+
+        # Hyperreflective ILM boundary peak
+        x_indices = np.arange(w)
+        ilm_indices = np.clip(np.round(ilm_y).astype(int), 0, h - 1)
+        slice_img[ilm_indices, x_indices] = np.maximum(slice_img[ilm_indices, x_indices], 155.0 + rng.normal(0, 8.0, w))
+
+        # Crisp ELM boundary
+        elm_indices = np.clip(np.round(elm_y).astype(int), 0, h - 1)
+        slice_img[elm_indices, x_indices] = np.maximum(slice_img[elm_indices, x_indices], 115.0 + rng.normal(0, 6.0, w))
+
+        # Choroidal vessel flow voids (large dark vascular lumens)
+        for (vx, vy_off, rx, ry) in choroid_vessels:
+            cx = int((vx + 1.0) * 0.5 * w)
+            cy = int(bm_y[cx] + vy_off)
+            if 0 <= cy < h:
+                y_min = max(0, cy - int(ry * 1.5))
+                y_max = min(h, cy + int(ry * 1.5))
+                x_min = max(0, cx - int(rx * 1.5))
+                x_max = min(w, cx + int(rx * 1.5))
+                y_pts, x_pts = np.ogrid[y_min:y_max, x_min:x_max]
+                dist_norm = ((x_pts - cx) / rx) ** 2 + ((y_pts - cy) / ry) ** 2
+                in_lumen = dist_norm <= 1.0
+                if np.any(in_lumen):
+                    sub_slice = slice_img[y_min:y_max, x_min:x_max]
+                    sub_slice[in_lumen] = rng.normal(22.0, 4.0, size=np.count_nonzero(in_lumen))
+
+        # Retinal blood vessel attenuation shadows
+        vessel_shadow = np.ones((h, w), dtype=np.float32)
+        for vx in vessel_x_positions:
+            v_col = int(np.clip((vx + 1.0) * 0.5 * w, 0, w - 1))
+            v_width = rng.randint(4, 9)
+            x_min = max(0, v_col - v_width // 2)
+            x_max = min(w, v_col + v_width // 2)
+            y_start = int(ilm_y[v_col])
+            vessel_shadow[y_start:, x_min:x_max] *= rng.uniform(0.55, 0.72)
+        slice_img *= vessel_shadow
+
+        # Multiplicative Optical Coherence Speckle
+        speckle = rng.gamma(shape=14.0, scale=1.0 / 14.0, size=(h, w)).astype(np.float32)
+        slice_speckle = cv2.GaussianBlur(speckle, (3, 1), 0.5)
+        slice_img = np.clip(slice_img * slice_speckle, 0.0, 255.0)
+
         vol[z_idx] = slice_img
 
     return vol.astype(np.uint8)
+
 
 
 def batch_generate_synthetic_oct(
