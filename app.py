@@ -114,21 +114,21 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 CDSCO_REGULATORY_BANNER_HTML = """
-<div style="background-color: #fff8e1; border: 1px solid #ffe082; border-left: 6px solid #f57f17; padding: 14px 18px; margin-bottom: 18px; border-radius: 6px; color: #37474f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <span style="font-size: 26px;">⚠️</span>
+<div class="regulatory-notice-banner">
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <span style="font-size: 24px; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.45)); line-height: 1;">⚠️</span>
       <div>
-        <strong style="font-size: 14.5px; color: #b71c1c; letter-spacing: 0.5px;">
+        <strong style="font-size: 13.5px; color: #f59e0b; letter-spacing: 0.6px; text-transform: uppercase;">
           CDSCO INVESTIGATIONAL MEDICAL DEVICE NOTICE | RULE 51, MEDICAL DEVICE RULES (MDR) 2017
         </strong>
-        <div style="font-size: 12.5px; margin-top: 3px; color: #424242; line-height: 1.45;">
-          <strong>FOR INVESTIGATIONAL & ACADEMIC RESEARCH USE ONLY.</strong> NOT CLEARED OR APPROVED BY THE CENTRAL DRUGS STANDARD CONTROL ORGANIZATION (CDSCO, GOVT. OF INDIA) FOR IN-VIVO CLINICAL DIAGNOSIS, THERAPEUTIC MONITORING, OR COMMERCIAL USE.
+        <div style="font-size: 12px; margin-top: 3px; color: #cbd5e1; line-height: 1.45;">
+          <strong style="color: #f1f5f9;">FOR INVESTIGATIONAL & ACADEMIC RESEARCH USE ONLY.</strong> NOT CLEARED OR APPROVED BY THE CENTRAL DRUGS STANDARD CONTROL ORGANIZATION (CDSCO, GOVT. OF INDIA) FOR IN-VIVO CLINICAL DIAGNOSIS, THERAPEUTIC MONITORING, OR COMMERCIAL USE.
         </div>
       </div>
     </div>
-    <span style="background-color: #f57f17; color: #ffffff; font-weight: 700; font-size: 11px; padding: 5px 12px; border-radius: 4px; letter-spacing: 0.8px; text-transform: uppercase;">
-      Investigational SaMD
+    <span class="status-pill pill-warn" style="font-size: 11px; padding: 4px 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;">
+      INVESTIGATIONAL SAMD
     </span>
   </div>
 </div>
@@ -1720,165 +1720,440 @@ def play_voice_cue_sample(cue_name: str) -> Tuple[Optional[str], str]:
 # ---------------------------------------------------------------------------
 
 CUSTOM_CSS = """
-.gradio-container {
-    background-color: #0b0f19 !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-    max-width: 1600px !important;
-    margin: 0 auto !important;
+/* ==========================================================================
+   Func2OCT Clinical AI Workstation - Dark Medical Aesthetic Design System
+   ========================================================================== */
+
+:root {
+    --bg-base: #080c14;
+    --bg-surface: #0f172a;
+    --bg-card: #162032;
+    --bg-card-hover: #1e293b;
+    --bg-input: #0b1120;
+    --border-subtle: rgba(148, 163, 184, 0.12);
+    --border-card: rgba(148, 163, 184, 0.18);
+    --border-active: rgba(6, 182, 212, 0.45);
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --cyan-primary: #06b6d4;
+    --cyan-glow: rgba(6, 182, 212, 0.25);
+    --teal-primary: #14b8a6;
+    --sky-accent: #38bdf8;
+    --emerald-pass: #10b981;
+    --amber-warn: #f59e0b;
+    --rose-fail: #ef4444;
+    --purple-accent: #a855f7;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+/* Base Body and Gradio Container */
+body, .gradio-container {
+    background-color: var(--bg-base) !important;
+    font-family: var(--font-sans) !important;
+    max-width: 1720px !important;
+    margin: 0 auto !important;
+    padding: 12px 20px !important;
+    color: var(--text-primary) !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Sleek Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 9999px;
+    border: 1px solid rgba(148, 163, 184, 0.1);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+}
+
+/* Top CDSCO Regulatory Notice Banner */
+.regulatory-notice-banner {
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.09) 0%, rgba(15, 23, 42, 0.92) 100%) !important;
+    border: 1px solid rgba(245, 158, 11, 0.28) !important;
+    border-left: 5px solid #f59e0b !important;
+    border-radius: 10px !important;
+    padding: 12px 20px !important;
+    margin-bottom: 14px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+    backdrop-filter: blur(8px) !important;
+}
+
+/* Studio Header */
 .studio-header {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0e7490 100%);
-    border: 1px solid #334155;
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 14px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(22, 32, 50, 0.95) 55%, rgba(14, 116, 144, 0.22) 100%) !important;
+    border: 1px solid rgba(56, 189, 248, 0.22) !important;
+    border-radius: 14px !important;
+    padding: 18px 24px !important;
+    margin-bottom: 16px !important;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.05) inset !important;
+    backdrop-filter: blur(12px) !important;
 }
 .studio-title {
-    font-size: 1.65rem;
-    font-weight: 800;
-    color: #f8fafc;
-    margin: 0 0 6px 0;
-    letter-spacing: -0.02em;
+    font-size: 1.55rem !important;
+    font-weight: 800 !important;
+    color: var(--text-primary) !important;
+    margin: 0 0 4px 0 !important;
+    letter-spacing: -0.02em !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
 }
 .studio-subtitle {
-    font-size: 0.95rem;
-    color: #94a3b8;
-    margin: 0;
+    font-size: 0.92rem !important;
+    color: var(--text-muted) !important;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.4 !important;
 }
-
-.panel-card {
-    background: #111827;
-    border: 1px solid #1f2937;
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-}
-
-.panel-header-badge {
-    display: inline-block;
-    padding: 4px 10px;
+.studio-pipeline-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     font-size: 0.78rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-radius: 6px;
-    margin-bottom: 10px;
+    color: var(--text-dim);
+    margin-top: 6px;
 }
-.badge-p1 { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
-.badge-p2 { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.3); }
-.badge-p3 { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+.breadcrumb-step {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 3px 10px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+.breadcrumb-arrow {
+    color: var(--cyan-primary);
+    font-weight: bold;
+}
+.studio-version-tag {
+    font-size: 0.72rem;
+    background: rgba(6, 182, 212, 0.15);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    color: var(--cyan-primary);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 700;
+    vertical-align: middle;
+    margin-left: 6px;
+}
 
+/* Gradio Tabs Navigation Bar */
+.tabs {
+    border: none !important;
+    background: transparent !important;
+}
+.tab-nav {
+    background: #0b1120 !important;
+    border-radius: 12px !important;
+    padding: 5px !important;
+    border: 1px solid var(--border-subtle) !important;
+    margin-bottom: 16px !important;
+    gap: 6px !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
+}
+.tab-nav button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    color: var(--text-muted) !important;
+    padding: 8px 16px !important;
+    border: none !important;
+    background: transparent !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    letter-spacing: -0.01em !important;
+}
+.tab-nav button:hover {
+    color: var(--text-primary) !important;
+    background: rgba(148, 163, 184, 0.08) !important;
+}
+.tab-nav button.selected {
+    color: #38bdf8 !important;
+    background: rgba(14, 165, 233, 0.12) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.35) inset !important;
+}
+
+/* Panel Cards (3-Panel Architecture) */
+.panel-card {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: 14px !important;
+    padding: 18px !important;
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    transition: border-color 0.2s ease !important;
+}
+.panel-card:hover {
+    border-color: rgba(148, 163, 184, 0.25) !important;
+}
+
+/* Panel Header Badges */
+.panel-header-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 5px 12px !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    border-radius: 8px !important;
+    margin-bottom: 4px !important;
+    width: fit-content !important;
+}
+.badge-p1 {
+    background: rgba(14, 165, 233, 0.12) !important;
+    color: #38bdf8 !important;
+    border: 1px solid rgba(56, 189, 248, 0.35) !important;
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.12) !important;
+}
+.badge-p2 {
+    background: rgba(20, 184, 166, 0.12) !important;
+    color: #2dd4bf !important;
+    border: 1px solid rgba(45, 212, 191, 0.35) !important;
+    box-shadow: 0 0 12px rgba(20, 184, 166, 0.12) !important;
+}
+.badge-p3 {
+    background: rgba(168, 85, 247, 0.12) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(192, 132, 252, 0.35) !important;
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.12) !important;
+}
+
+/* Medical Viewports & Image Framing */
+.gradio-image, div[data-testid="image"] {
+    background: #070b12 !important;
+    border: 1px solid rgba(148, 163, 184, 0.15) !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) inset !important;
+}
+.gradio-image .image-frame, div[data-testid="image"] .image-frame {
+    background: transparent !important;
+}
+
+/* Buttons & Action Bar */
+button.primary {
+    background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 0.90rem !important;
+    border: 1px solid rgba(56, 189, 248, 0.45) !important;
+    border-radius: 8px !important;
+    padding: 8px 18px !important;
+    box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35) !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    cursor: pointer !important;
+}
+button.primary:hover {
+    background: linear-gradient(135deg, #0369a1 0%, #0891b2 100%) !important;
+    box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5) !important;
+    transform: translateY(-1px) !important;
+}
+button.primary:active {
+    transform: translateY(0px) !important;
+}
+
+button.secondary {
+    background: #1e293b !important;
+    border: 1px solid rgba(148, 163, 184, 0.2) !important;
+    color: var(--text-primary) !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    padding: 7px 14px !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+}
+button.secondary:hover {
+    background: #273549 !important;
+    border-color: rgba(56, 189, 248, 0.35) !important;
+    color: #38bdf8 !important;
+}
+
+/* Form Inputs, Dropdowns, Radios, Sliders */
+.gradio-dropdown, .gradio-textbox, .gradio-slider, .gradio-radio, .gradio-checkbox {
+    background: transparent !important;
+}
+input, select, textarea {
+    background-color: var(--bg-input) !important;
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-primary) !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    font-size: 0.88rem !important;
+    transition: border-color 0.2s ease !important;
+}
+input:focus, select:focus, textarea:focus {
+    border-color: var(--cyan-primary) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px var(--cyan-glow) !important;
+}
+
+/* Accordions */
+.accordion, details {
+    background: rgba(15, 23, 42, 0.75) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 10px !important;
+    padding: 8px 12px !important;
+    margin-top: 6px !important;
+    margin-bottom: 6px !important;
+}
+summary {
+    font-weight: 600 !important;
+    color: var(--text-secondary) !important;
+    cursor: pointer !important;
+}
+summary:hover {
+    color: #38bdf8 !important;
+}
+
+/* Telemetry Cards & Metric Chips */
 .card-telemetry {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 14px;
-    margin-top: 10px;
-    margin-bottom: 10px;
+    background: var(--bg-card) !important;
+    border: 1px solid rgba(148, 163, 184, 0.16) !important;
+    border-radius: 10px !important;
+    padding: 14px 16px !important;
+    margin-top: 8px !important;
+    margin-bottom: 8px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
 }
 
 .status-pill {
-    font-size: 0.76rem;
-    font-weight: 700;
-    padding: 3px 8px;
-    border-radius: 9999px;
-    letter-spacing: 0.04em;
-    display: inline-block;
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    padding: 3px 9px !important;
+    border-radius: 9999px !important;
+    letter-spacing: 0.04em !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    width: fit-content !important;
 }
-.pill-pass { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid #10b981; }
-.pill-fail { background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid #ef4444; }
-.pill-warn { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid #f59e0b; }
-.pill-cyan { background: rgba(6, 182, 212, 0.18); color: #22d3ee; border: 1px solid #06b6d4; }
+.pill-pass { background: rgba(16, 185, 129, 0.16) !important; color: #34d399 !important; border: 1px solid #10b981 !important; }
+.pill-fail { background: rgba(239, 68, 68, 0.16) !important; color: #f87171 !important; border: 1px solid #ef4444 !important; }
+.pill-warn { background: rgba(245, 158, 11, 0.16) !important; color: #fbbf24 !important; border: 1px solid #f59e0b !important; }
+.pill-cyan { background: rgba(6, 182, 212, 0.16) !important; color: #22d3ee !important; border: 1px solid #06b6d4 !important; }
 
 .metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin-top: 8px;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    margin-top: 8px !important;
 }
 .metric-item {
-    background: #0f172a;
-    border: 1px solid #1e293b;
-    border-radius: 6px;
-    padding: 8px 10px;
+    background: #090d16 !important;
+    border: 1px solid rgba(148, 163, 184, 0.12) !important;
+    border-radius: 8px !important;
+    padding: 10px 12px !important;
 }
 .metric-label {
-    font-size: 0.76rem;
-    color: #94a3b8;
-    text-transform: uppercase;
-    font-weight: 600;
+    font-size: 0.74rem !important;
+    color: var(--text-muted) !important;
+    text-transform: uppercase !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em !important;
 }
 .metric-value {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: #f1f5f9;
+    font-size: 1.1rem !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    margin: 2px 0 !important;
 }
 .metric-sub {
-    font-size: 0.73rem;
-    color: #64748b;
+    font-size: 0.72rem !important;
+    color: var(--text-dim) !important;
 }
 
+/* 8-Layer Segmentation Chips */
 .layer-chips-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    margin-top: 10px !important;
 }
 .layer-chip {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 0.75rem;
-    display: flex;
-    gap: 6px;
+    background: #090d16 !important;
+    border: 1px solid rgba(148, 163, 184, 0.15) !important;
+    border-radius: 6px !important;
+    padding: 4px 9px !important;
+    font-size: 0.74rem !important;
+    display: flex !important;
+    gap: 6px !important;
+    align-items: center !important;
 }
-.chip-name { font-weight: 700; color: #38bdf8; }
-.chip-val { color: #cbd5e1; }
+.chip-name { font-weight: 700 !important; color: #38bdf8 !important; }
+.chip-val { color: var(--text-secondary) !important; font-family: var(--font-mono) !important; }
 
+/* Multimodal Model Comparison Card */
 .model-comparison-box {
-    background: #0f172a;
-    border: 1px solid #1e293b;
-    border-radius: 8px;
-    padding: 12px;
-    margin-top: 8px;
+    background: #090d16 !important;
+    border: 1px solid rgba(148, 163, 184, 0.15) !important;
+    border-radius: 10px !important;
+    padding: 12px !important;
+    margin-top: 8px !important;
 }
 .progress-bar-bg {
-    background: #334155;
-    border-radius: 9999px;
-    height: 10px;
-    overflow: hidden;
-    margin-top: 4px;
+    background: #1e293b !important;
+    border-radius: 9999px !important;
+    height: 8px !important;
+    overflow: hidden !important;
+    margin-top: 5px !important;
 }
 .progress-bar-fill {
-    height: 100%;
-    border-radius: 9999px;
-    transition: width 0.4s ease;
+    height: 100% !important;
+    border-radius: 9999px !important;
+    transition: width 0.4s ease !important;
 }
-.fill-blue { background: linear-gradient(90deg, #0284c7, #38bdf8); }
-.fill-purple { background: linear-gradient(90deg, #7c3aed, #c084fc); }
+.fill-blue { background: linear-gradient(90deg, #0284c7, #38bdf8) !important; }
+.fill-purple { background: linear-gradient(90deg, #7c3aed, #c084fc) !important; }
 
 .auroc-badge {
-    font-size: 0.72rem;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 4px;
-    background: rgba(148, 163, 184, 0.15);
-    color: #cbd5e1;
-    border: 1px solid #475569;
-    letter-spacing: 0.03em;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    padding: 2px 7px !important;
+    border-radius: 5px !important;
+    background: rgba(148, 163, 184, 0.12) !important;
+    color: #cbd5e1 !important;
+    border: 1px solid rgba(148, 163, 184, 0.25) !important;
+    letter-spacing: 0.03em !important;
 }
 .auroc-highlight {
-    background: rgba(16, 185, 129, 0.2);
-    color: #34d399;
-    border-color: #059669;
+    background: rgba(16, 185, 129, 0.18) !important;
+    color: #34d399 !important;
+    border-color: #10b981 !important;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
 }
 .ci-text {
-    font-size: 0.75rem;
-    color: #94a3b8;
-    font-family: monospace;
+    font-size: 0.75rem !important;
+    color: var(--text-muted) !important;
+    font-family: var(--font-mono) !important;
+}
+
+/* Audio Player Polish */
+.gr-audio, audio {
+    border-radius: 8px !important;
+}
+
+/* Responsive Viewports */
+@media (max-width: 1280px) {
+    .metrics-grid {
+        grid-template-columns: 1fr !important;
+    }
 }
 """
 
@@ -1906,15 +2181,26 @@ def build_app() -> gr.Blocks:
         gr.HTML(
             """
             <div class="studio-header">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
                     <div>
-                        <div class="studio-title">👁️ Func2OCT Studio: 3-Panel Retinal Generative & Diagnostic Suite</div>
+                        <div class="studio-title">
+                            <span>👁️</span> Func2OCT Studio: 3-Panel Retinal Generative & Diagnostic Suite
+                            <span class="studio-version-tag">v2.4 SaMD</span>
+                        </div>
                         <div class="studio-subtitle">
-                            Panel 1: Fundus Upload & QC ➔ Panel 2: Synthetic OCT 2D/3D Viewer (8-Layer Segmentation) ➔ Panel 3: Multimodal AI Classification
+                            Cross-Modal Generative Synthesis (Fundus ➔ 3D OCT), Automated 8-Layer Segmentation & Multimodal Diagnostic Intelligence
+                        </div>
+                        <div class="studio-pipeline-breadcrumb">
+                            <span class="breadcrumb-step">Panel 1: Fundus Upload & Optical QC</span>
+                            <span class="breadcrumb-arrow">➔</span>
+                            <span class="breadcrumb-step">Panel 2: Synthetic OCT 2D/3D Studio</span>
+                            <span class="breadcrumb-arrow">➔</span>
+                            <span class="breadcrumb-step">Panel 3: Multimodal AI Classification</span>
                         </div>
                     </div>
-                    <div>
-                        <span class="status-pill pill-cyan">v2.4 Production SaMD</span>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+                        <span class="status-pill pill-cyan">CDSCO MDR 2017 (Rule 51)</span>
+                        <span class="status-pill pill-pass">Deep Generative Diffusion</span>
                     </div>
                 </div>
             </div>
@@ -2663,10 +2949,14 @@ def build_app() -> gr.Blocks:
         # Footer Notice
         gr.HTML(
             """
-            <div style="text-align: center; margin-top: 24px; padding: 12px; color: #64748b; font-size: 0.8rem; border-top: 1px solid #1e293b;">
-                Func2OCT Clinical Architecture | Standardized Retinal Tolerances (2.0 - 3.5 DD, ±15° temporal axis) |
-                8-Layer Automated Tracing (ILM, RNFL, IPL, INL, OPL, ELM, RPE, BM) | Model B Gated Multimodal Fusion |
-                Investigational SaMD under CDSCO Medical Device Rules 2017 (Rule 51). Strictly for academic and research evaluation.
+            <div style="text-align: center; margin-top: 28px; padding: 16px 20px; color: #64748b; font-size: 0.78rem; border-top: 1px solid rgba(148, 163, 184, 0.12); line-height: 1.6;">
+                <div style="margin-bottom: 4px; font-weight: 600; color: #94a3b8;">
+                    Func2OCT Clinical Architecture &bull; Standardized Retinal Tolerances (2.0 - 3.5 DD, &plusmn;15&deg; temporal axis) &bull;
+                    8-Layer Automated Tracing (ILM, RNFL, IPL, INL, OPL, ELM, RPE, BM) &bull; Model B Gated Multimodal Fusion
+                </div>
+                <div>
+                    Investigational SaMD under CDSCO Medical Device Rules 2017 (Rule 51). Strictly for academic, computational and clinical research evaluation.
+                </div>
             </div>
             """
         )
