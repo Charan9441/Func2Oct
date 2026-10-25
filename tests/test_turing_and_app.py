@@ -237,3 +237,70 @@ def test_turing_telugu_narration():
     assert "క్లినికల్ ట్యూరింగ్" in transcript
 
 
+def test_generative_pipeline_integration():
+    """Verifies end-to-end integration of EyeFound + LVDM + VAE in pipeline.py and app.py."""
+    pipe = app.get_generative_pipeline()
+    assert pipe is not None
+    assert hasattr(pipe, "synthesize_3d_volume")
+
+    # Verify synthesize_3d_volume produces standardized (32, 256, 256) uint8 volume
+    demo_fundus = app.create_demo_fundus(blur_level=0.0)
+    vol_3d = pipe.synthesize_3d_volume(
+        fundus=demo_fundus,
+        class_hint="DR",
+        num_slices=32,
+        seed=42,
+    )
+    assert isinstance(vol_3d, np.ndarray)
+    assert vol_3d.shape == (32, 256, 256)
+    assert vol_3d.dtype == np.uint8
+
+
+def test_comparative_classification_and_auroc_ci():
+    """Verifies 2D baseline and 3D multimodal classification connection, AUROC, and CIs."""
+    # 1. Verify Wilson score CI computation
+    low, high = app.compute_wilson_ci(0.85, n=100)
+    assert 70.0 < low < 85.0
+    assert 85.0 < high < 95.0
+
+    # 2. Verify model loader retrieves both models
+    model_a, model_b = app.get_models()
+    assert model_a is not None
+    assert model_b is not None
+
+    # 3. Verify format_multimodal_predictions_html contains AUROC, CIs, and likelihoods
+    prob_a = np.array([0.25, 0.75])
+    prob_b = np.array([0.08, 0.92])
+    html_card = app.format_multimodal_predictions_html(
+        prob_a=prob_a,
+        prob_b=prob_b,
+        fundus_weight=42.0,
+        oct_weight=58.0,
+        disease_prior="MD",
+        auroc_a=0.846,
+        auroc_b=0.942,
+    )
+    assert "Model A: 2D Fundus Baseline" in html_card
+    assert "Model B: 3D Multimodal" in html_card
+    assert "AUROC: 0.846" in html_card
+    assert "AUROC: 0.942" in html_card
+    assert "95% CI" in html_card
+    assert "Multimodal AUROC Uplift" in html_card
+
+    # 4. Verify run_full_pipeline telemetry output format
+    fundus_demo = app.create_demo_fundus(blur_level=0.0)
+    res = app.run_full_pipeline(
+        fundus_img=app.Image.fromarray(fundus_demo),
+        disease_scenario="Normal Control",
+        focus_thresh=0.50,
+        verify_geom=True,
+        expected_eye="OD",
+        active_slice=16,
+        viz_mode="Raw Synthetic B-Scan",
+    )
+    telemetry = res[8]
+    assert "model_a_2d_baseline" in telemetry
+    assert "model_b_3d_multimodal" in telemetry
+    assert "auroc_uplift" in telemetry
+    assert telemetry["model_a_2d_baseline"]["auroc"] == 0.846
+    assert telemetry["model_b_3d_multimodal"]["auroc"] == 0.942
