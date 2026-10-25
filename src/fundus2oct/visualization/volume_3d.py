@@ -1,5 +1,10 @@
 import numpy as np
-import plotly.graph_objects as go
+try:
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    go = None
+    PLOTLY_AVAILABLE = False
 import cv2
 from typing import Dict, List, Optional, Tuple, Union
 

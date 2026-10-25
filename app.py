@@ -38,7 +38,12 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-import plotly.graph_objects as go
+try:
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    go = None
+    PLOTLY_AVAILABLE = False
 import torch
 
 # Ensure src/, repo root, and demo_assets are in Python path
@@ -124,6 +129,23 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Regulatory CDSCO Medical Device Disclaimers
 # ---------------------------------------------------------------------------
+
+import base64
+
+_BRAND_ASSETS_DIR = Path(_REPO_ROOT) / "assets"
+_EMBLEM_FILE = _BRAND_ASSETS_DIR / "nyxvision_emblem_128.png"
+if _EMBLEM_FILE.exists():
+    with open(_EMBLEM_FILE, "rb") as _f:
+        NYX_EMBLEM_B64 = base64.b64encode(_f.read()).decode("utf-8")
+else:
+    NYX_EMBLEM_B64 = ""
+
+_LOGO_FILE = _BRAND_ASSETS_DIR / "nyxvision_logo_web.png"
+if _LOGO_FILE.exists():
+    with open(_LOGO_FILE, "rb") as _f:
+        NYX_LOGO_B64 = base64.b64encode(_f.read()).decode("utf-8")
+else:
+    NYX_LOGO_B64 = ""
 
 CDSCO_REGULATORY_BANNER_HTML = """
 <div class="regulatory-notice-banner">
@@ -1893,186 +1915,164 @@ def play_voice_cue_sample(cue_name: str) -> Tuple[Optional[str], str]:
 
 CUSTOM_CSS = """
 /* ==========================================================================
-   Func2OCT Clinical AI Workstation - Dark Medical Aesthetic Design System
+   NyxVision — See What Lies Beneath | Retinal Imaging Research Workstation
+   Brand Design System (Sampled from Official Logo Asset)
    ========================================================================== */
 
 :root {
-    --bg-base: #080c14;
-    --bg-surface: #0f172a;
-    --bg-card: #162032;
-    --bg-card-hover: #1e293b;
-    --bg-input: #0b1120;
-    --border-subtle: rgba(148, 163, 184, 0.12);
-    --border-card: rgba(148, 163, 184, 0.18);
-    --border-active: rgba(6, 182, 212, 0.45);
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --text-dim: #64748b;
-    --cyan-primary: #06b6d4;
-    --cyan-glow: rgba(6, 182, 212, 0.25);
-    --teal-primary: #14b8a6;
-    --sky-accent: #38bdf8;
-    --emerald-pass: #10b981;
-    --amber-warn: #f59e0b;
-    --rose-fail: #ef4444;
-    --purple-accent: #a855f7;
-    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --nyx-bg-void: #00030b;
+    --nyx-bg-base: #050a14;
+    --nyx-bg-surface: #0b1322;
+    --nyx-bg-elevated: #101c2e;
+    --nyx-bg-card-hover: #162740;
+    --nyx-bg-input: #060b17;
+    --nyx-primary: #12d9f5;
+    --nyx-primary-electric: #24e1f8;
+    --nyx-secondary: #167bff;
+    --nyx-secondary-luminous: #0a83cb;
+    --nyx-border: #1d2b40;
+    --nyx-border-card: rgba(29, 43, 64, 0.85);
+    --nyx-border-active: rgba(36, 225, 248, 0.55);
+    --nyx-focus: #55e7ff;
+    --nyx-text-primary: #f4f8fb;
+    --nyx-text-secondary: #a8b8cc;
+    --nyx-text-muted: #7f91a8;
+    --nyx-emerald: #10b981;
+    --nyx-amber: #f59e0b;
+    --nyx-rose: #ef4444;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-/* Base Body and Gradio Container */
 body, .gradio-container {
-    background-color: var(--bg-base) !important;
+    background-color: var(--nyx-bg-base) !important;
     font-family: var(--font-sans) !important;
-    max-width: 1720px !important;
+    max-width: 1780px !important;
     margin: 0 auto !important;
-    padding: 12px 20px !important;
-    color: var(--text-primary) !important;
+    padding: 10px 20px !important;
+    color: var(--nyx-text-primary) !important;
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Sleek Scrollbars */
-::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
-::-webkit-scrollbar-track {
-    background: var(--bg-base);
-}
-::-webkit-scrollbar-thumb {
-    background: #1e293b;
-    border-radius: 9999px;
-    border: 1px solid rgba(148, 163, 184, 0.1);
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #334155;
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--nyx-bg-void); }
+::-webkit-scrollbar-thumb { background: #1d2b40; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3d58; }
 
-/* Top CDSCO Regulatory Notice Banner */
 .regulatory-notice-banner {
-    background: linear-gradient(90deg, rgba(245, 158, 11, 0.09) 0%, rgba(15, 23, 42, 0.92) 100%) !important;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.08) 0%, rgba(11, 19, 34, 0.95) 100%) !important;
     border: 1px solid rgba(245, 158, 11, 0.28) !important;
     border-left: 5px solid #f59e0b !important;
     border-radius: 10px !important;
-    padding: 12px 20px !important;
-    margin-bottom: 14px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
-    backdrop-filter: blur(8px) !important;
+    padding: 10px 18px !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
 }
 
-/* Studio Header */
-.studio-header {
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(22, 32, 50, 0.95) 55%, rgba(14, 116, 144, 0.22) 100%) !important;
-    border: 1px solid rgba(56, 189, 248, 0.22) !important;
+.nyx-header-container {
+    background: linear-gradient(135deg, rgba(5, 10, 20, 0.98) 0%, rgba(11, 19, 34, 0.96) 55%, rgba(16, 28, 46, 0.92) 100%) !important;
+    border: 1px solid var(--nyx-border) !important;
+    border-top: 2px solid var(--nyx-primary) !important;
     border-radius: 14px !important;
-    padding: 18px 24px !important;
-    margin-bottom: 16px !important;
-    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.05) inset !important;
-    backdrop-filter: blur(12px) !important;
+    padding: 16px 24px !important;
+    margin-bottom: 14px !important;
+    box-shadow: 0 10px 32px rgba(0, 3, 11, 0.8), 0 0 24px rgba(18, 217, 245, 0.12) inset !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 16px !important;
 }
-.studio-title {
-    font-size: 1.55rem !important;
-    font-weight: 800 !important;
-    color: var(--text-primary) !important;
-    margin: 0 0 4px 0 !important;
-    letter-spacing: -0.02em !important;
+.nyx-brand-block { display: flex !important; align-items: center !important; gap: 18px !important; }
+.nyx-emblem-glow {
+    width: 68px !important;
+    height: 68px !important;
+    border-radius: 50% !important;
+    box-shadow: 0 0 20px rgba(36, 225, 248, 0.5), 0 0 4px rgba(36, 225, 248, 0.8) !important;
+    border: 1.5px solid var(--nyx-primary-electric) !important;
+    background: var(--nyx-bg-void) !important;
+    flex-shrink: 0 !important;
+}
+.nyx-brand-title {
+    font-size: 1.75rem !important;
+    font-weight: 900 !important;
+    color: var(--nyx-text-primary) !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase !important;
+    margin: 0 !important;
+    line-height: 1.1 !important;
     display: flex !important;
     align-items: center !important;
     gap: 8px !important;
 }
-.studio-subtitle {
-    font-size: 0.92rem !important;
-    color: var(--text-muted) !important;
-    margin: 0 0 6px 0 !important;
-    line-height: 1.4 !important;
+.nyx-flare {
+    color: var(--nyx-primary-electric) !important;
+    text-shadow: 0 0 14px rgba(36, 225, 248, 0.9), 0 0 2px #fff !important;
 }
-.studio-pipeline-breadcrumb {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    font-size: 0.78rem;
-    color: var(--text-dim);
-    margin-top: 6px;
+.nyx-tagline-wrapper { display: flex !important; align-items: center !important; gap: 10px !important; margin: 3px 0 5px 0 !important; }
+.nyx-tagline-line { height: 1px !important; width: 28px !important; background: linear-gradient(90deg, transparent, var(--nyx-primary-electric)) !important; }
+.nyx-tagline-line.right { background: linear-gradient(90deg, var(--nyx-primary-electric), transparent) !important; }
+.nyx-tagline-text {
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    color: var(--nyx-primary-electric) !important;
+    letter-spacing: 0.24em !important;
+    text-transform: uppercase !important;
+    text-shadow: 0 0 8px rgba(36, 225, 248, 0.4) !important;
 }
-.breadcrumb-step {
-    background: rgba(148, 163, 184, 0.08);
-    border: 1px solid rgba(148, 163, 184, 0.15);
-    padding: 3px 10px;
-    border-radius: 6px;
-    color: var(--text-secondary);
-    font-weight: 600;
-}
-.breadcrumb-arrow {
-    color: var(--cyan-primary);
-    font-weight: bold;
-}
-.studio-version-tag {
-    font-size: 0.72rem;
-    background: rgba(6, 182, 212, 0.15);
-    border: 1px solid rgba(6, 182, 212, 0.35);
-    color: var(--cyan-primary);
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-weight: 700;
-    vertical-align: middle;
-    margin-left: 6px;
+.nyx-brand-subtitle { font-size: 0.82rem !important; color: var(--nyx-text-secondary) !important; line-height: 1.35 !important; }
+.nyx-header-pills { display: flex !important; flex-direction: column !important; align-items: flex-end !important; gap: 6px !important; }
+.nyx-samd-tag {
+    background: rgba(36, 225, 248, 0.12) !important;
+    border: 1px solid rgba(36, 225, 248, 0.35) !important;
+    color: var(--nyx-primary-electric) !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
 }
 
-/* Gradio Tabs Navigation Bar */
-.tabs {
-    border: none !important;
-    background: transparent !important;
-}
+.tabs { border: none !important; background: transparent !important; }
 .tab-nav {
-    background: #0b1120 !important;
+    background: var(--nyx-bg-surface) !important;
     border-radius: 12px !important;
     padding: 5px !important;
-    border: 1px solid var(--border-subtle) !important;
-    margin-bottom: 16px !important;
+    border: 1px solid var(--nyx-border) !important;
+    margin-bottom: 14px !important;
     gap: 6px !important;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
 }
 .tab-nav button {
     border-radius: 8px !important;
     font-weight: 600 !important;
     font-size: 0.88rem !important;
-    color: var(--text-muted) !important;
+    color: var(--nyx-text-muted) !important;
     padding: 8px 16px !important;
     border: none !important;
     background: transparent !important;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    letter-spacing: -0.01em !important;
+    transition: all 0.2s ease !important;
 }
-.tab-nav button:hover {
-    color: var(--text-primary) !important;
-    background: rgba(148, 163, 184, 0.08) !important;
-}
+.tab-nav button:hover { color: var(--nyx-text-primary) !important; background: rgba(36, 225, 248, 0.08) !important; }
 .tab-nav button.selected {
-    color: #38bdf8 !important;
-    background: rgba(14, 165, 233, 0.12) !important;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.35) inset !important;
+    color: var(--nyx-text-primary) !important;
+    background: rgba(18, 217, 245, 0.14) !important;
+    box-shadow: 0 0 14px rgba(18, 217, 245, 0.2) inset, 0 0 0 1px rgba(36, 225, 248, 0.45) !important;
 }
 
-/* Panel Cards (3-Panel Architecture) */
 .panel-card {
-    background: var(--bg-surface) !important;
-    border: 1px solid var(--border-card) !important;
-    border-radius: 14px !important;
-    padding: 18px !important;
-    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+    background: var(--nyx-bg-surface) !important;
+    border: 1px solid var(--nyx-border-card) !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    box-shadow: 0 8px 28px rgba(0, 3, 11, 0.6) !important;
     display: flex !important;
     flex-direction: column !important;
-    gap: 12px !important;
-    transition: border-color 0.2s ease !important;
+    gap: 10px !important;
 }
 .panel-card:hover {
-    border-color: rgba(148, 163, 184, 0.25) !important;
+    border-color: rgba(36, 225, 248, 0.35) !important;
 }
 
-/* Panel Header Badges */
 .panel-header-badge {
     display: inline-flex !important;
     align-items: center !important;
@@ -2086,122 +2086,70 @@ body, .gradio-container {
     margin-bottom: 4px !important;
     width: fit-content !important;
 }
-.badge-p1 {
-    background: rgba(14, 165, 233, 0.12) !important;
-    color: #38bdf8 !important;
-    border: 1px solid rgba(56, 189, 248, 0.35) !important;
-    box-shadow: 0 0 12px rgba(14, 165, 233, 0.12) !important;
-}
-.badge-p2 {
-    background: rgba(20, 184, 166, 0.12) !important;
-    color: #2dd4bf !important;
-    border: 1px solid rgba(45, 212, 191, 0.35) !important;
-    box-shadow: 0 0 12px rgba(20, 184, 166, 0.12) !important;
-}
-.badge-p3 {
-    background: rgba(168, 85, 247, 0.12) !important;
-    color: #c084fc !important;
-    border: 1px solid rgba(192, 132, 252, 0.35) !important;
-    box-shadow: 0 0 12px rgba(168, 85, 247, 0.12) !important;
-}
+.badge-p1 { background: rgba(18, 217, 245, 0.12) !important; color: var(--nyx-primary-electric) !important; border: 1px solid rgba(36, 225, 248, 0.4) !important; }
+.badge-p2 { background: rgba(22, 123, 255, 0.14) !important; color: #60a5fa !important; border: 1px solid rgba(59, 130, 246, 0.45) !important; }
+.badge-p3 { background: rgba(168, 85, 247, 0.12) !important; color: #c084fc !important; border: 1px solid rgba(192, 132, 252, 0.35) !important; }
 
-/* Medical Viewports & Image Framing */
 .gradio-image, div[data-testid="image"] {
-    background: #070b12 !important;
-    border: 1px solid rgba(148, 163, 184, 0.15) !important;
+    background: var(--nyx-bg-void) !important;
+    border: 1px solid var(--nyx-border) !important;
     border-radius: 10px !important;
     overflow: hidden !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) inset !important;
-}
-.gradio-image .image-frame, div[data-testid="image"] .image-frame {
-    background: transparent !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) inset !important;
 }
 
-/* Buttons & Action Bar */
 button.primary {
-    background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%) !important;
-    color: #ffffff !important;
-    font-weight: 700 !important;
+    background: linear-gradient(135deg, #167bff 0%, #12d9f5 100%) !important;
+    color: #00040a !important;
+    font-weight: 800 !important;
     font-size: 0.90rem !important;
-    border: 1px solid rgba(56, 189, 248, 0.45) !important;
+    border: 1px solid rgba(85, 231, 255, 0.6) !important;
     border-radius: 8px !important;
     padding: 8px 18px !important;
-    box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35) !important;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 18px rgba(18, 217, 245, 0.4) !important;
     cursor: pointer !important;
 }
 button.primary:hover {
-    background: linear-gradient(135deg, #0369a1 0%, #0891b2 100%) !important;
-    box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5) !important;
-    transform: translateY(-1px) !important;
-}
-button.primary:active {
-    transform: translateY(0px) !important;
+    background: linear-gradient(135deg, #2587ff 0%, #30e1fb 100%) !important;
+    box-shadow: 0 6px 24px rgba(18, 217, 245, 0.6) !important;
 }
 
 button.secondary {
-    background: #1e293b !important;
-    border: 1px solid rgba(148, 163, 184, 0.2) !important;
-    color: var(--text-primary) !important;
+    background: var(--nyx-bg-elevated) !important;
+    border: 1px solid var(--nyx-border) !important;
+    color: var(--nyx-text-primary) !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
-    font-size: 0.88rem !important;
+    font-size: 0.86rem !important;
     padding: 7px 14px !important;
-    transition: all 0.2s ease !important;
     cursor: pointer !important;
 }
 button.secondary:hover {
-    background: #273549 !important;
-    border-color: rgba(56, 189, 248, 0.35) !important;
-    color: #38bdf8 !important;
+    background: var(--nyx-bg-card-hover) !important;
+    border-color: rgba(36, 225, 248, 0.4) !important;
+    color: var(--nyx-primary-electric) !important;
 }
 
-/* Form Inputs, Dropdowns, Radios, Sliders */
-.gradio-dropdown, .gradio-textbox, .gradio-slider, .gradio-radio, .gradio-checkbox {
-    background: transparent !important;
-}
 input, select, textarea {
-    background-color: var(--bg-input) !important;
-    border: 1px solid var(--border-subtle) !important;
-    color: var(--text-primary) !important;
+    background-color: var(--nyx-bg-input) !important;
+    border: 1px solid var(--nyx-border) !important;
+    color: var(--nyx-text-primary) !important;
     border-radius: 8px !important;
     padding: 8px 12px !important;
-    font-size: 0.88rem !important;
-    transition: border-color 0.2s ease !important;
 }
 input:focus, select:focus, textarea:focus {
-    border-color: var(--cyan-primary) !important;
+    border-color: var(--nyx-primary-electric) !important;
     outline: none !important;
-    box-shadow: 0 0 0 2px var(--cyan-glow) !important;
+    box-shadow: 0 0 0 2px rgba(85, 231, 255, 0.35) !important;
 }
 
-/* Accordions */
-.accordion, details {
-    background: rgba(15, 23, 42, 0.75) !important;
-    border: 1px solid var(--border-subtle) !important;
+.card-telemetry {
+    background: var(--nyx-bg-elevated) !important;
+    border: 1px solid var(--nyx-border) !important;
     border-radius: 10px !important;
-    padding: 8px 12px !important;
+    padding: 12px 14px !important;
     margin-top: 6px !important;
     margin-bottom: 6px !important;
-}
-summary {
-    font-weight: 600 !important;
-    color: var(--text-secondary) !important;
-    cursor: pointer !important;
-}
-summary:hover {
-    color: #38bdf8 !important;
-}
-
-/* Telemetry Cards & Metric Chips */
-.card-telemetry {
-    background: var(--bg-card) !important;
-    border: 1px solid rgba(148, 163, 184, 0.16) !important;
-    border-radius: 10px !important;
-    padding: 14px 16px !important;
-    margin-top: 8px !important;
-    margin-bottom: 8px !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
 }
 
 .status-pill {
@@ -2213,120 +2161,11 @@ summary:hover {
     display: inline-flex !important;
     align-items: center !important;
     gap: 4px !important;
-    width: fit-content !important;
 }
 .pill-pass { background: rgba(16, 185, 129, 0.16) !important; color: #34d399 !important; border: 1px solid #10b981 !important; }
 .pill-fail { background: rgba(239, 68, 68, 0.16) !important; color: #f87171 !important; border: 1px solid #ef4444 !important; }
 .pill-warn { background: rgba(245, 158, 11, 0.16) !important; color: #fbbf24 !important; border: 1px solid #f59e0b !important; }
-.pill-cyan { background: rgba(6, 182, 212, 0.16) !important; color: #22d3ee !important; border: 1px solid #06b6d4 !important; }
-
-.metrics-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 8px !important;
-    margin-top: 8px !important;
-}
-.metric-item {
-    background: #090d16 !important;
-    border: 1px solid rgba(148, 163, 184, 0.12) !important;
-    border-radius: 8px !important;
-    padding: 10px 12px !important;
-}
-.metric-label {
-    font-size: 0.74rem !important;
-    color: var(--text-muted) !important;
-    text-transform: uppercase !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.04em !important;
-}
-.metric-value {
-    font-size: 1.1rem !important;
-    font-weight: 700 !important;
-    color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
-    margin: 2px 0 !important;
-}
-.metric-sub {
-    font-size: 0.72rem !important;
-    color: var(--text-dim) !important;
-}
-
-/* 8-Layer Segmentation Chips */
-.layer-chips-container {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 6px !important;
-    margin-top: 10px !important;
-}
-.layer-chip {
-    background: #090d16 !important;
-    border: 1px solid rgba(148, 163, 184, 0.15) !important;
-    border-radius: 6px !important;
-    padding: 4px 9px !important;
-    font-size: 0.74rem !important;
-    display: flex !important;
-    gap: 6px !important;
-    align-items: center !important;
-}
-.chip-name { font-weight: 700 !important; color: #38bdf8 !important; }
-.chip-val { color: var(--text-secondary) !important; font-family: var(--font-mono) !important; }
-
-/* Multimodal Model Comparison Card */
-.model-comparison-box {
-    background: #090d16 !important;
-    border: 1px solid rgba(148, 163, 184, 0.15) !important;
-    border-radius: 10px !important;
-    padding: 12px !important;
-    margin-top: 8px !important;
-}
-.progress-bar-bg {
-    background: #1e293b !important;
-    border-radius: 9999px !important;
-    height: 8px !important;
-    overflow: hidden !important;
-    margin-top: 5px !important;
-}
-.progress-bar-fill {
-    height: 100% !important;
-    border-radius: 9999px !important;
-    transition: width 0.4s ease !important;
-}
-.fill-blue { background: linear-gradient(90deg, #0284c7, #38bdf8) !important; }
-.fill-purple { background: linear-gradient(90deg, #7c3aed, #c084fc) !important; }
-
-.auroc-badge {
-    font-size: 0.72rem !important;
-    font-weight: 700 !important;
-    padding: 2px 7px !important;
-    border-radius: 5px !important;
-    background: rgba(148, 163, 184, 0.12) !important;
-    color: #cbd5e1 !important;
-    border: 1px solid rgba(148, 163, 184, 0.25) !important;
-    letter-spacing: 0.03em !important;
-}
-.auroc-highlight {
-    background: rgba(16, 185, 129, 0.18) !important;
-    color: #34d399 !important;
-    border-color: #10b981 !important;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
-}
-.ci-text {
-    font-size: 0.75rem !important;
-    color: var(--text-muted) !important;
-    font-family: var(--font-mono) !important;
-}
-
-/* Audio Player Polish */
-.gr-audio, audio {
-    border-radius: 8px !important;
-}
-
-/* Responsive Viewports */
-@media (max-width: 1280px) {
-    .metrics-grid {
-        grid-template-columns: 1fr !important;
-    }
-}
+.pill-cyan { background: rgba(18, 217, 245, 0.16) !important; color: var(--nyx-primary-electric) !important; border: 1px solid var(--nyx-primary) !important; }
 """
 
 
@@ -2342,7 +2181,7 @@ def build_app() -> gr.Blocks:
         neutral_hue="slate",
     )
 
-    with gr.Blocks(title="Func2OCT Studio: 3-Panel Retinal AI Suite") as demo:
+    with gr.Blocks(title="NyxVision — See What Lies Beneath | Retinal Imaging Research Workstation") as demo:
         demo.theme = theme
         demo.css = CUSTOM_CSS
 
@@ -2352,28 +2191,27 @@ def build_app() -> gr.Blocks:
         # Header Title Banner
         gr.HTML(
             """
-            <div class="studio-header">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div class="nyx-header-container">
+                <div class="nyx-brand-block">
+                    <img src="data:image/png;base64,{NYX_EMBLEM_B64}" class="nyx-emblem-glow" alt="NyxVision Emblem" />
                     <div>
-                        <div class="studio-title">
-                            <span>👁️</span> Func2OCT Studio: 3-Panel Retinal Generative & Diagnostic Suite
-                            <span class="studio-version-tag">v2.4 SaMD</span>
+                        <div class="nyx-brand-title">
+                            NYX<span class="nyx-flare">V</span>ISION
+                            <span class="nyx-samd-tag">v2.4 SaMD</span>
                         </div>
-                        <div class="studio-subtitle">
-                            Cross-Modal Generative Synthesis (Fundus ➔ 3D OCT), Automated 8-Layer Segmentation & Multimodal Diagnostic Intelligence
+                        <div class="nyx-tagline-wrapper">
+                            <span class="nyx-tagline-line"></span>
+                            <span class="nyx-tagline-text">SEE WHAT LIES BENEATH.</span>
+                            <span class="nyx-tagline-line right"></span>
                         </div>
-                        <div class="studio-pipeline-breadcrumb">
-                            <span class="breadcrumb-step">Panel 1: Fundus Upload & Optical QC</span>
-                            <span class="breadcrumb-arrow">➔</span>
-                            <span class="breadcrumb-step">Panel 2: Synthetic OCT 2D/3D Studio</span>
-                            <span class="breadcrumb-arrow">➔</span>
-                            <span class="breadcrumb-step">Panel 3: Multimodal AI Classification</span>
+                        <div class="nyx-brand-subtitle">
+                            Fundus-to-OCT Representation Research &bull; Cross-Modal Generative Synthesis &bull; 8-Layer Laminar Biomarkers
                         </div>
                     </div>
-                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
-                        <span class="status-pill pill-cyan">CDSCO MDR 2017 (Rule 51)</span>
-                        <span class="status-pill pill-pass">Deep Generative Diffusion</span>
-                    </div>
+                </div>
+                <div class="nyx-header-pills">
+                    <span class="status-pill pill-cyan">CDSCO MDR 2017 (Rule 51)</span>
+                    <span class="status-pill pill-pass">Deep Generative Diffusion</span>
                 </div>
             </div>
             """
@@ -3428,7 +3266,7 @@ def build_app() -> gr.Blocks:
             """
             <div style="text-align: center; margin-top: 28px; padding: 16px 20px; color: #64748b; font-size: 0.78rem; border-top: 1px solid rgba(148, 163, 184, 0.12); line-height: 1.6;">
                 <div style="margin-bottom: 4px; font-weight: 600; color: #94a3b8;">
-                    Func2OCT Clinical Architecture &bull; Standardized Retinal Tolerances (2.0 - 3.5 DD, &plusmn;15&deg; temporal axis) &bull;
+                    NyxVision Clinical Architecture &bull; Standardized Retinal Tolerances (2.0 - 3.5 DD, &plusmn;15&deg; temporal axis) &bull;
                     8-Layer Automated Tracing (ILM, RNFL, IPL, INL, OPL, ELM, RPE, BM) &bull; Model B Gated Multimodal Fusion
                 </div>
                 <div>
