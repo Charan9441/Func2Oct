@@ -25,3 +25,8 @@ matplotlib>=3.8.0
 # Configuration & Utilities
 pyyaml>=6.0.1
 tqdm>=4.66.0
+qrcode>=8.0.0
+
+# Speech Synthesis & Regional Audio Accessibility (Telugu Patient Reports)
+gTTS>=2.5.0
+

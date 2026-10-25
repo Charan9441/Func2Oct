@@ -68,6 +68,13 @@ outputs/interactive_cache/*
 !outputs/interactive_cache/.gitkeep
 outputs/demo_assets/*
 !outputs/demo_assets/.gitkeep
+!outputs/demo_assets/*.py
+!outputs/demo_assets/*.md
+!outputs/demo_assets/*.json
+!outputs/demo_assets/*.png
+!outputs/demo_assets/samples/
+outputs/audio/*
+!outputs/audio/.gitkeep
 *.log
 
 # OS & Editor specific files

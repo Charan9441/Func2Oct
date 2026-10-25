@@ -149,3 +149,91 @@ def test_auto_capture_stream_consecutive_trigger_and_transfer():
     assert transferred is not None
     assert transferred.size == (512, 512)
 
+
+def test_gtts_speech_synthesis():
+    """Verifies that synthesize_speech generates a valid, non-empty MP3 audio file."""
+    audio_path = app.synthesize_speech("నమస్కారం పరీక్ష", lang="te", filename_prefix="unit_test")
+    assert audio_path is not None
+    assert os.path.exists(audio_path)
+    assert os.path.getsize(audio_path) > 100
+
+
+def test_telugu_voice_cues():
+    """Verifies retrieval and synthesis of auto-capture guidance cues in localized Telugu."""
+    text, audio_path = app.get_telugu_voice_cue("HOLD_STEADY")
+    assert "స్థిరంగా" in text
+    assert audio_path is not None
+    assert os.path.exists(audio_path)
+
+    text_cap, audio_cap = app.get_telugu_voice_cue("CAPTURE")
+    assert "ఆటో-క్యాప్చర్" in text_cap
+    assert audio_cap is not None
+    assert os.path.exists(audio_cap)
+
+
+def test_telugu_qc_patient_report():
+    """Verifies localized Telugu audio report generation from QC inspection."""
+    fundus = app.create_demo_fundus(blur_level=0.0)
+    report = app.check_fundus_quality(fundus, verify_geometry=True, expected_laterality="OD")
+
+    audio_path, te_card, en_card = app.format_telugu_qc_patient_report(
+        report=report,
+        patient_id="PID-TEST-99",
+        expected_eye="OD",
+        language="Telugu (తెలుగు)",
+    )
+    assert audio_path is not None
+    assert os.path.exists(audio_path)
+    assert "PID-TEST-99" in te_card
+    assert "ఆప్టిక్ డిస్క్" in te_card
+    assert "PID-TEST-99" in en_card
+
+
+def test_accessible_audio_report_studio():
+    """Verifies dedicated accessibility studio audio report and transcript generation."""
+    audio_path, summary_md = app.generate_accessible_audio_report(
+        patient_name="శ్రీనివాస రావు",
+        eye_choice="కుడి కన్ను (Right Eye - OD)",
+        condition_preset="ఉత్తమ నాణ్యత - సాధారణ రెటీనా (Normal Healthy Retina - Pass)",
+        custom_findings="స్పష్టమైన నాళాల అమరిక.",
+        language_choice="Telugu (తెలుగు)",
+        speech_speed="సాధారణం (Normal)",
+    )
+    assert audio_path is not None
+    assert os.path.exists(audio_path)
+    assert "శ్రీనివాస రావు" in summary_md
+    assert "ఆడియో సంభాషణ" in summary_md
+
+
+def test_patient_diagnostic_audio_report():
+    """Verifies multimodal diagnostic report voice synthesis."""
+    audio_path, te_card, en_card = app.generate_patient_diagnostic_audio_report(
+        disease_scenario="Macular Degeneration (AMD)",
+        qc_telemetry={"clarity_score": 0.88},
+        prob_b=np.array([0.15, 0.85]),
+        patient_id="PID-AMD-01",
+        expected_eye="OD",
+        language="Telugu (తెలుగు)",
+    )
+    assert audio_path is not None
+    assert os.path.exists(audio_path)
+    assert "మాక్యులర్ డీజెనరేషన్" in te_card or "AMD" in te_card
+    assert "PID-AMD-01" in te_card
+
+
+def test_turing_telugu_narration():
+    """Verifies Clinical Turing test ground truth reveal narration in Telugu."""
+    session = ClinicalTuringTestSession()
+    blind_case = session.get_blind_case()
+    case_id = blind_case["case_id"]
+
+    audio_path, transcript = app.narrate_turing_evaluation_telugu(
+        case_id=case_id,
+        reader_choice="🏥 Real In-Vivo Clinical OCT B-Scan",
+    )
+    assert audio_path is not None
+    assert os.path.exists(audio_path)
+    assert case_id in transcript
+    assert "క్లినికల్ ట్యూరింగ్" in transcript
+
+

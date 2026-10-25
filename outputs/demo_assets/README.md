@@ -40,22 +40,55 @@ The **Clinical Turing Test** quantifies whether deep generative models (such as 
 
 ---
 
-## 3. Directory Structure
+## 3. Directory Structure & Key Assets
 
 ```
 outputs/demo_assets/
-├── clinical_turing_test.py      # Core evaluation engine, scoring math & session manager
-├── README.md                    # Regulatory documentation & clinical testing guide
-├── turing_manifest.json         # Trial catalog with blinded IDs and ground truth
-├── reader_evaluations.json      # Reader trial logs and session telemetry
-└── samples/                     # Curated paired benchmark B-scans
-    ├── sample_OCT-TR-R001.png   # Real in-vivo OCT scan
-    ├── sample_OCT-TR-R002.png   # Real in-vivo OCT scan
+├── clinical_workflow_walkthrough.mp4 # 2-minute 720p HD clinical walkthrough demonstration video
+├── hf_spaces_demo_qr.png             # Scannable QR code linking directly to live HF Spaces studio
+├── generate_qr.py                    # Script generating the branded HF Spaces QR code asset
+├── record_walkthrough.py             # Video synthesis script generating the 1200-frame MP4
+├── walkthrough_script.md             # Spoken narration script & timestamped chapter storyboard
+├── clinical_turing_test.py           # Core evaluation engine, scoring math & session manager
+├── README.md                         # Regulatory documentation & clinical testing guide
+├── turing_manifest.json              # Trial catalog with blinded IDs and ground truth
+├── reader_evaluations.json           # Reader trial logs and session telemetry
+└── samples/                          # Curated paired benchmark B-scans
+    ├── sample_OCT-TR-R001.png        # Real in-vivo OCT scan
+    ├── sample_OCT-TR-R002.png        # Real in-vivo OCT scan
     ...
-    ├── sample_OCT-TR-S001.png   # Synthetic LVDM diffusion OCT scan
-    ├── sample_OCT-TR-S002.png   # Synthetic LVDM diffusion OCT scan
+    ├── sample_OCT-TR-S001.png        # Synthetic LVDM diffusion OCT scan
+    ├── sample_OCT-TR-S002.png        # Synthetic LVDM diffusion OCT scan
     ...
 ```
+
+---
+
+## 4. 2-Minute Demonstration Walkthrough Video & Storyboard
+
+The video asset `clinical_workflow_walkthrough.mp4` demonstrates the complete end-to-end clinical workflow over 120 seconds (1,200 frames @ 10 FPS, 1280x720 HD):
+
+1. **Chapter 1 (0:00 - 0:24)**: *Introduction & CDSCO Regulatory Scope* — Statutory citations under Rule 51 of Medical Device Rules (MDR) 2017, investigational SaMD classification, and system architecture.
+2. **Chapter 2 (0:24 - 0:48)**: *Real-Time Auto-Capture & Quality Control* — Tenengrad spectral sharpness, modified Laplacian focus, optic disc & macula anatomical geometry, and 3-frame stability lock-in.
+3. **Chapter 3 (0:48 - 1:12)**: *Cross-Modal 3D Volumetric Diffusion* — EyeFound 512D conditioning, 3D latent UNet denoising, and continuous 32-slice coherent OCT volume synthesis.
+4. **Chapter 4 (1:12 - 1:36)**: *8-Layer Retinal Segmentation & Multimodal Classifier Uplift* — Sub-micron boundary tracing (ILM to Choroid) and diagnostic confidence boost from 2D fundus baseline to 3D multimodal fusion.
+5. **Chapter 5 (1:36 - 2:00)**: *Clinical Turing Discrimination & Live Demo Access* — Blind reader challenge, indistinguishability telemetry, and live Hugging Face Spaces QR code connection.
+
+---
+
+## 5. Live Hugging Face Spaces Access QR Code
+
+- **Live Demo URL**: [https://huggingface.co/spaces/Charan9441/Fund2Oct](https://huggingface.co/spaces/Charan9441/Fund2Oct)
+- **High-Resolution QR Asset**: [`outputs/demo_assets/hf_spaces_demo_qr.png`](file:///c:/Users/racha/OneDrive/Desktop/Fund2Oct/Func2Oct/outputs/demo_assets/hf_spaces_demo_qr.png)
+- **Generator Script**: [`outputs/demo_assets/generate_qr.py`](file:///c:/Users/racha/OneDrive/Desktop/Fund2Oct/Func2Oct/outputs/demo_assets/generate_qr.py)
+
+---
+
+## 6. Localized Telugu Voice Narration & Accessibility
+
+For rural primary health center (PHC) deployment, the studio integrates text-to-speech accessibility using Google Text-to-Speech (`gTTS`):
+- **Live Auto-Capture Voice Prompts**: Real-time Telugu verbal feedback during patient scanning (e.g., *"దృష్టిని అలాగే ఉంచండి. కదలకుండా స్థిరంగా ఉండండి"*).
+- **Patient Audio Health Summary**: Automated patient-facing audio report explaining diagnostic results in accessible Telugu with CDSCO non-diagnostic investigational guidance.
 
 ---
 
