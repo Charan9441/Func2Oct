@@ -1,0 +1,218 @@
+{
+  "timestamp": "2026-10-25T01:45:59Z",
+  "input_directory": "outputs\\onnx",
+  "output_directory": "outputs\\onnx_int8",
+  "method": "all",
+  "models": {
+    "fundus_classifier": {
+      "dynamic": {
+        "status": "success",
+        "path": "outputs\\onnx_int8\\fundus_classifier_int8_dynamic.onnx",
+        "size_mb": 19.71,
+        "quant_time_sec": 2.29,
+        "benchmark": {
+          "fp32": {
+            "model_path": "outputs\\onnx\\fundus_classifier.onnx",
+            "size_mb": 76.48,
+            "mean_latency_ms": 52.47,
+            "p50_latency_ms": 49.53,
+            "p95_latency_ms": 65.2,
+            "min_latency_ms": 40.99,
+            "max_latency_ms": 65.92,
+            "throughput_fps": 19.1
+          },
+          "int8": {
+            "model_path": "outputs\\onnx_int8\\fundus_classifier_int8_dynamic.onnx",
+            "size_mb": 19.71,
+            "mean_latency_ms": 34.73,
+            "p50_latency_ms": 34.58,
+            "p95_latency_ms": 38.77,
+            "min_latency_ms": 31.47,
+            "max_latency_ms": 42.41,
+            "throughput_fps": 28.8
+          },
+          "compression_ratio": 3.88,
+          "size_reduction_percent": 74.2,
+          "latency_speedup_factor": 1.51,
+          "mean_absolute_error": 0.00858,
+          "max_absolute_error": 0.01354,
+          "cosine_similarity": 0.99998
+        }
+      },
+      "static": {
+        "status": "success",
+        "path": "outputs\\onnx_int8\\fundus_classifier_int8_static.onnx",
+        "size_mb": 19.67,
+        "quant_time_sec": 10.07,
+        "benchmark": {
+          "fp32": {
+            "model_path": "outputs\\onnx\\fundus_classifier.onnx",
+            "size_mb": 76.48,
+            "mean_latency_ms": 62.45,
+            "p50_latency_ms": 52.4,
+            "p95_latency_ms": 102.93,
+            "min_latency_ms": 41.99,
+            "max_latency_ms": 144.12,
+            "throughput_fps": 16.0
+          },
+          "int8": {
+            "model_path": "outputs\\onnx_int8\\fundus_classifier_int8_static.onnx",
+            "size_mb": 19.67,
+            "mean_latency_ms": 36.98,
+            "p50_latency_ms": 35.56,
+            "p95_latency_ms": 43.82,
+            "min_latency_ms": 30.08,
+            "max_latency_ms": 57.41,
+            "throughput_fps": 27.0
+          },
+          "compression_ratio": 3.89,
+          "size_reduction_percent": 74.3,
+          "latency_speedup_factor": 1.69,
+          "mean_absolute_error": 0.00086,
+          "max_absolute_error": 0.00158,
+          "cosine_similarity": 1.0
+        }
+      }
+    },
+    "multimodal_classifier_2d": {
+      "dynamic": {
+        "status": "success",
+        "path": "outputs\\onnx_int8\\multimodal_classifier_2d_int8_dynamic.onnx",
+        "size_mb": 24.62,
+        "quant_time_sec": 2.72,
+        "benchmark": {
+          "fp32": {
+            "model_path": "outputs\\onnx\\multimodal_classifier_2d.onnx",
+            "size_mb": 95.76,
+            "mean_latency_ms": 76.24,
+            "p50_latency_ms": 74.29,
+            "p95_latency_ms": 85.74,
+            "min_latency_ms": 67.17,
+            "max_latency_ms": 118.31,
+            "throughput_fps": 13.1
+          },
+          "int8": {
+            "model_path": "outputs\\onnx_int8\\multimodal_classifier_2d_int8_dynamic.onnx",
+            "size_mb": 24.62,
+            "mean_latency_ms": 542.74,
+            "p50_latency_ms": 537.96,
+            "p95_latency_ms": 684.79,
+            "min_latency_ms": 445.05,
+            "max_latency_ms": 703.91,
+            "throughput_fps": 1.8
+          },
+          "compression_ratio": 3.89,
+          "size_reduction_percent": 74.3,
+          "latency_speedup_factor": 0.14,
+          "mean_absolute_error": 0.00712,
+          "max_absolute_error": 0.00855,
+          "cosine_similarity": 0.99989
+        }
+      },
+      "static": {
+        "status": "success",
+        "path": "outputs\\onnx_int8\\multimodal_classifier_2d_int8_static.onnx",
+        "size_mb": 24.72,
+        "quant_time_sec": 13.7,
+        "benchmark": {
+          "fp32": {
+            "model_path": "outputs\\onnx\\multimodal_classifier_2d.onnx",
+            "size_mb": 95.76,
+            "mean_latency_ms": 66.99,
+            "p50_latency_ms": 61.33,
+            "p95_latency_ms": 91.19,
+            "min_latency_ms": 57.2,
+            "max_latency_ms": 97.94,
+            "throughput_fps": 14.9
+          },
+          "int8": {
+            "model_path": "outputs\\onnx_int8\\multimodal_classifier_2d_int8_static.onnx",
+            "size_mb": 24.72,
+            "mean_latency_ms": 77.46,
+            "p50_latency_ms": 75.77,
+            "p95_latency_ms": 89.85,
+            "min_latency_ms": 71.69,
+            "max_latency_ms": 99.72,
+            "throughput_fps": 12.9
+          },
+          "compression_ratio": 3.87,
+          "size_reduction_percent": 74.2,
+          "latency_speedup_factor": 0.86,
+          "mean_absolute_error": 0.00814,
+          "max_absolute_error": 0.01046,
+          "cosine_similarity": 0.99988
+        }
+      }
+    },
+    "oct_generator_decoder": {
+      "dynamic": {
+        "status": "success",
+        "path": "outputs\\onnx_int8\\oct_generator_decoder_int8_dynamic.onnx",
+        "size_mb": 8.19,
+        "quant_time_sec": 0.89,
+        "benchmark": {
+          "fp32": {
+            "model_path": "outputs\\onnx\\oct_generator_decoder.onnx",
+            "size_mb": 16.74,
+            "mean_latency_ms": 131.5,
+            "p50_latency_ms": 127.78,
+            "p95_latency_ms": 148.67,
+            "min_latency_ms": 122.82,
+            "max_latency_ms": 161.85,
+            "throughput_fps": 7.6
+          },
+          "int8": {
+            "model_path": "outputs\\onnx_int8\\oct_generator_decoder_int8_dynamic.onnx",
+            "size_mb": 8.19,
+            "mean_latency_ms": 600.5,
+            "p50_latency_ms": 595.95,
+            "p95_latency_ms": 623.96,
+            "min_latency_ms": 576.47,
+            "max_latency_ms": 628.43,
+            "throughput_fps": 1.7
+          },
+          "compression_ratio": 2.04,
+          "size_reduction_percent": 51.1,
+          "latency_speedup_factor": 0.22,
+          "mean_absolute_error": 0.00987,
+          "max_absolute_error": 0.06958,
+          "cosine_similarity": 0.99887
+        }
+      },
+      "static": {
+        "status": "success",
+        "path": "outputs\\onnx_int8\\oct_generator_decoder_int8_static.onnx",
+        "size_mb": 4.35,
+        "quant_time_sec": 6.41,
+        "benchmark": {
+          "fp32": {
+            "model_path": "outputs\\onnx\\oct_generator_decoder.onnx",
+            "size_mb": 16.74,
+            "mean_latency_ms": 151.23,
+            "p50_latency_ms": 147.56,
+            "p95_latency_ms": 190.48,
+            "min_latency_ms": 129.13,
+            "max_latency_ms": 216.38,
+            "throughput_fps": 6.6
+          },
+          "int8": {
+            "model_path": "outputs\\onnx_int8\\oct_generator_decoder_int8_static.onnx",
+            "size_mb": 4.35,
+            "mean_latency_ms": 152.85,
+            "p50_latency_ms": 148.07,
+            "p95_latency_ms": 173.15,
+            "min_latency_ms": 135.53,
+            "max_latency_ms": 190.66,
+            "throughput_fps": 6.5
+          },
+          "compression_ratio": 3.85,
+          "size_reduction_percent": 74.0,
+          "latency_speedup_factor": 0.99,
+          "mean_absolute_error": 0.02257,
+          "max_absolute_error": 0.13995,
+          "cosine_similarity": 0.99404
+        }
+      }
+    }
+  }
+}

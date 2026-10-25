@@ -66,6 +66,12 @@ outputs/evaluation_reports/*
 !outputs/evaluation_reports/.gitkeep
 outputs/interactive_cache/*
 !outputs/interactive_cache/.gitkeep
+outputs/onnx/*
+!outputs/onnx/.gitkeep
+!outputs/onnx/*.json
+outputs/onnx_int8/*
+!outputs/onnx_int8/.gitkeep
+!outputs/onnx_int8/*.json
 outputs/demo_assets/*
 !outputs/demo_assets/.gitkeep
 !outputs/demo_assets/*.py

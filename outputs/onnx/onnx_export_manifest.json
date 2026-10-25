@@ -1,0 +1,23 @@
+{
+  "fundus_classifier": {
+    "status": "success",
+    "path": "outputs\\onnx\\fundus_classifier.onnx",
+    "size_mb": 76.48,
+    "export_time_sec": 2.86,
+    "opset_version": 18
+  },
+  "multimodal_classifier": {
+    "status": "success",
+    "path": "outputs\\onnx\\multimodal_classifier_2d.onnx",
+    "size_mb": 95.76,
+    "export_time_sec": 3.65,
+    "opset_version": 18
+  },
+  "oct_decoder": {
+    "status": "success",
+    "path": "outputs\\onnx\\oct_generator_decoder.onnx",
+    "size_mb": 16.74,
+    "export_time_sec": 1.37,
+    "opset_version": 18
+  }
+}

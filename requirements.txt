@@ -30,3 +30,7 @@ qrcode>=8.0.0
 # Speech Synthesis & Regional Audio Accessibility (Telugu Patient Reports)
 gTTS>=2.5.0
 
+# Edge Deployment & ONNX Quantization
+onnx>=1.16.0
+onnxruntime>=1.17.0
+onnxscript>=0.1.0
