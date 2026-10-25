@@ -8,16 +8,19 @@ into an interactive auto-capture feedback loop.
 """
 
 import os
+from pathlib import Path
 import sys
 from typing import Any, Dict, Optional, Tuple
-import numpy as np
 import cv2
-from PIL import Image
 import gradio as gr
+import numpy as np
+from PIL import Image
+import torch
 
 # Ensure src directory is in Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
 
+from fundus2oct.data.preprocessing import preprocess_fundus
 from fundus2oct.data.quality_control import (
     QCStatus,
     check_fundus_quality,
@@ -34,6 +37,8 @@ from fundus2oct.data.auto_capture import (
     GuidanceCue,
     create_demo_fundus,
 )
+from fundus2oct.evaluation.gradcam import compute_gradcam
+from fundus2oct.evaluation.uncertainty import estimate_predictive_uncertainty
 
 # Persistent Auto-Capture Engine instance for stateful video streams
 _global_auto_capture_engine = AutoCaptureEngine(
@@ -42,6 +47,42 @@ _global_auto_capture_engine = AutoCaptureEngine(
     min_macula_confidence=0.25,
     required_consecutive_frames=3,
 )
+
+# Persistent model cache for web demo
+_classifier_cache: Dict[str, Any] = {}
+
+
+def get_cached_classifier(model_type: str = "Fundus-only Classifier (Model A)"):
+    """Loads and caches the requested classifier model."""
+    if model_type in _classifier_cache:
+        return _classifier_cache[model_type]
+
+    device = torch.device("cpu")
+    if "Fundus-only" in model_type:
+        from fundus2oct.models.classifier_fundus import FundusClassifier
+        model = FundusClassifier()
+        ckpt_path = Path("checkpoints/classifier_fundus.pt")
+        if ckpt_path.exists() and ckpt_path.stat().st_size > 0:
+            try:
+                model.load_checkpoint(ckpt_path, device=device)
+            except Exception as e:
+                print(f"[Warning] Failed to load FundusClassifier checkpoint: {e}")
+        model.eval()
+        _classifier_cache[model_type] = model
+        return model
+    else:
+        from fundus2oct.models.classifier_multimodal import MultimodalClassifier
+        model = MultimodalClassifier()
+        ckpt_path = Path("checkpoints/classifier_multimodal.pt")
+        if ckpt_path.exists() and ckpt_path.stat().st_size > 0:
+            try:
+                model.load_checkpoint(ckpt_path, device=device)
+            except Exception as e:
+                print(f"[Warning] Failed to load MultimodalClassifier checkpoint: {e}")
+        model.eval()
+        _classifier_cache[model_type] = model
+        return model
+
 
 
 def process_auto_capture_stream(
@@ -118,6 +159,118 @@ def full_quality_control_inspection(
 
     summary = report.summary_text()
     return annotated, summary, report.metrics
+
+
+def run_interpretability_and_uncertainty(
+    image: Optional[Image.Image],
+    model_choice: str,
+    target_class_choice: str,
+    num_passes: int,
+    uncertainty_metric: str,
+    threshold: float,
+    alpha: float,
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], str, Dict[str, Any]]:
+    """Generates Grad-CAM visual explanation and Monte Carlo Dropout uncertainty metrics."""
+    if image is None:
+        raw_arr = create_demo_fundus(blur_level=0.0)
+        image = Image.fromarray(raw_arr)
+
+    model = get_cached_classifier(model_choice)
+    is_trained = getattr(model, "is_trained", False)
+
+    # Preprocess fundus image to normalized tensor (1, 3, 256, 256)
+    img_tensor = preprocess_fundus(
+        image,
+        target_size=(256, 256),
+        center_crop=True,
+        normalize="imagenet",
+    ).unsqueeze(0)
+
+    # Target class parsing
+    if "Auto" in target_class_choice:
+        target_class = None
+    elif "0:" in target_class_choice:
+        target_class = 0
+    else:
+        target_class = 1
+
+    # Multimodal vs single-stream inputs
+    if "Multimodal" in model_choice:
+        dummy_oct = torch.zeros(1, 1, 256, 256, dtype=torch.float32)
+        inputs: Any = (img_tensor, dummy_oct)
+        modality = "fundus"
+    else:
+        inputs = img_tensor
+        modality = "fundus"
+
+    try:
+        # Compute Grad-CAM
+        cam_result = compute_gradcam(
+            model=model,
+            inputs=inputs,
+            target_class=target_class,
+            modality=modality,
+        )
+
+        # Compute Monte Carlo Dropout Predictive Uncertainty
+        unc_result = estimate_predictive_uncertainty(
+            model=model,
+            inputs=inputs,
+            num_passes=int(num_passes),
+            threshold=float(threshold),
+            uncertainty_metric=uncertainty_metric,
+            seed=42,
+        )
+
+        # Visualizations
+        overlay_img = cam_result.overlay(image, alpha=float(alpha))
+        heatmap_uint8 = np.uint8(255.0 * cam_result.heatmap)
+        heatmap_rgb = cv2.cvtColor(cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET), cv2.COLOR_BGR2RGB)
+
+        # Diagnostic text
+        class_names = ["Control / Non-pathology (0)", "Macular Degeneration (1)"]
+        pred_name = class_names[unc_result.predicted_class]
+        confidence_pct = unc_result.mean_probabilities[unc_result.predicted_class] * 100.0
+
+        flag_icon = "⚠️" if unc_result.is_high_uncertainty else "🟢"
+        flag_title = "HIGH PREDICTIVE UNCERTAINTY" if unc_result.is_high_uncertainty else "CONFIDENT / LOW UNCERTAINTY"
+        status_note = ""
+        if not is_trained:
+            status_note = "\n\n> [!WARNING]\n> **Untrained Checkpoint Warning**: Classifier checkpoint weights were initialized or uncalibrated. Displaying research telemetry."
+
+        summary_md = (
+            f"### {flag_icon} Diagnosis: `{pred_name}` ({confidence_pct:.1f}% confidence)\n\n"
+            f"**Decision Status**: `{flag_title}`\n\n"
+            f"- **Explained Layer**: `{cam_result.target_layer_name}` (Modality: `{cam_result.modality_explained}`)\n"
+            f"- **Target Class Explained**: `{class_names[cam_result.target_class]}`\n"
+            f"- **Uncertainty Score ({unc_result.uncertainty_metric})**: `{unc_result.uncertainty_score:.4f}` "
+            f"(Threshold: `{unc_result.threshold:.4f}`)\n"
+            f"- **Total Predictive Entropy**: `{unc_result.predictive_entropy_nats:.4f} nats` (`{unc_result.predictive_entropy_bits:.4f} bits`)\n"
+            f"- **Epistemic Uncertainty (Mutual Info)**: `{unc_result.mutual_information_nats:.4f} nats`\n"
+            f"- **Aleatoric Uncertainty (Expected Entropy)**: `{unc_result.expected_entropy_nats:.4f} nats`\n"
+            f"- **Monte Carlo Stochastic Passes**: `{unc_result.num_passes}`\n"
+            f"{status_note}\n\n"
+            f"> [!NOTE]\n"
+            f"> **Clinical Disclaimer**: Grad-CAM visual heatmaps highlight regional associative feature importance, "
+            f"not biological ground truth. Predictive uncertainty reflects model variance under MC Dropout and is not "
+            f"a calibrated diagnostic error probability."
+        )
+
+        telemetry = {
+            "gradcam": {
+                "target_layer": cam_result.target_layer_name,
+                "target_class": cam_result.target_class,
+                "predicted_class": cam_result.predicted_class,
+                "class_probabilities": cam_result.class_probabilities.tolist(),
+            },
+            "uncertainty": unc_result.to_dict(),
+        }
+
+        return overlay_img, heatmap_rgb, summary_md, telemetry
+
+    except Exception as e:
+        err_msg = f"### ❌ Interpretability Pipeline Error\n\n`{str(e)}`"
+        return None, None, err_msg, {"error": str(e)}
 
 
 def build_app() -> gr.Blocks:
@@ -225,6 +378,83 @@ def build_app() -> gr.Blocks:
                     fn=create_demo_fundus,
                     inputs=[blur_slider, disc_x_slider, gr.Number(value=250, visible=False), macula_dd_slider],
                     outputs=gen_output,
+                )
+
+            # Tab 4: Grad-CAM Interpretability & Predictive Uncertainty
+            with gr.TabItem("🔍 Interpretability & Uncertainty"):
+                gr.Markdown(
+                    """
+                    ### 🔍 Grad-CAM Saliency Maps & Monte Carlo Dropout Uncertainty Flagging
+                    Visualize convolutional feature attention across retinal landmarks and quantify epistemic/aleatoric uncertainty.
+                    """
+                )
+                with gr.Row():
+                    with gr.Column(scale=5):
+                        interp_img_in = gr.Image(label="Upload Retinal Fundus Photograph", type="pil")
+                        with gr.Row():
+                            model_select = gr.Dropdown(
+                                choices=["Fundus-only Classifier (Model A)", "Multimodal Classifier (Model B)"],
+                                value="Fundus-only Classifier (Model A)",
+                                label="Target Classifier Model",
+                            )
+                            target_class_select = gr.Radio(
+                                choices=["Auto (Predicted Class)", "0: Control / Non-pathology", "1: Macular Degeneration (MD)"],
+                                value="Auto (Predicted Class)",
+                                label="Class to Explain",
+                            )
+                        with gr.Row():
+                            mc_passes_slider = gr.Slider(
+                                minimum=2,
+                                maximum=30,
+                                value=15,
+                                step=1,
+                                label="MC Dropout Passes (T)",
+                            )
+                            unc_metric_select = gr.Dropdown(
+                                choices=["predictive_entropy", "mutual_information", "expected_entropy", "variance"],
+                                value="predictive_entropy",
+                                label="Uncertainty Metric",
+                            )
+                            threshold_slider = gr.Slider(
+                                minimum=0.05,
+                                maximum=1.00,
+                                value=0.50,
+                                step=0.05,
+                                label="High Uncertainty Threshold",
+                            )
+                            alpha_slider = gr.Slider(
+                                minimum=0.10,
+                                maximum=0.90,
+                                value=0.45,
+                                step=0.05,
+                                label="Grad-CAM Overlay Alpha",
+                            )
+                        run_interp_btn = gr.Button("⚡ Analyze Interpretability & Uncertainty", variant="primary")
+
+                    with gr.Column(scale=5):
+                        with gr.Row():
+                            interp_overlay_out = gr.Image(label="Grad-CAM Retinal Saliency Overlay", type="numpy")
+                            interp_heatmap_out = gr.Image(label="Normalized Heatmap (JET)", type="numpy")
+                        interp_report_out = gr.Markdown(value="Upload an image and run analysis to inspect Grad-CAM and uncertainty.")
+                        interp_metrics_out = gr.JSON(label="Numerical Uncertainty Telemetry")
+
+                run_interp_btn.click(
+                    fn=run_interpretability_and_uncertainty,
+                    inputs=[
+                        interp_img_in,
+                        model_select,
+                        target_class_select,
+                        mc_passes_slider,
+                        unc_metric_select,
+                        threshold_slider,
+                        alpha_slider,
+                    ],
+                    outputs=[
+                        interp_overlay_out,
+                        interp_heatmap_out,
+                        interp_report_out,
+                        interp_metrics_out,
+                    ],
                 )
 
         gr.Markdown(

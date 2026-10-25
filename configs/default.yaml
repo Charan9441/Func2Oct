@@ -110,3 +110,13 @@ evaluation:
   fid_min_samples: 50
   calculate_ssim_psnr: true   # Only when spatially aligned reference OCT is provided
   intensity_profile_bins: 64  # A-scan depth profile analysis
+  interpretability:
+    gradcam_target_layer: "auto"
+    gradcam_alpha: 0.45
+    gradcam_colormap: "jet"
+  uncertainty:
+    num_passes: 15
+    metric: "predictive_entropy"
+    threshold: 0.50
+    seed: 42
+

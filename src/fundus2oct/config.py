@@ -103,11 +103,29 @@ class InferenceConfig:
 
 
 @dataclass
+class InterpretabilityConfig:
+    gradcam_target_layer: str = "auto"
+    gradcam_alpha: float = 0.45
+    gradcam_colormap: str = "jet"
+
+
+@dataclass
+class UncertaintyConfig:
+    num_passes: int = 15
+    metric: str = "predictive_entropy"
+    threshold: Optional[float] = 0.50
+    seed: int = 42
+
+
+@dataclass
 class EvaluationConfig:
     enable_fid: bool = False
     fid_min_samples: int = 50
     calculate_ssim_psnr: bool = True
     intensity_profile_bins: int = 64
+    interpretability: InterpretabilityConfig = field(default_factory=InterpretabilityConfig)
+    uncertainty: UncertaintyConfig = field(default_factory=UncertaintyConfig)
+
 
 
 @dataclass
@@ -267,5 +285,31 @@ def load_config(config_path: Union[str, Path] = "configs/default.yaml") -> AppCo
         cfg.evaluation.fid_min_samples = ev.get("fid_min_samples", cfg.evaluation.fid_min_samples)
         cfg.evaluation.calculate_ssim_psnr = ev.get("calculate_ssim_psnr", cfg.evaluation.calculate_ssim_psnr)
         cfg.evaluation.intensity_profile_bins = ev.get("intensity_profile_bins", cfg.evaluation.intensity_profile_bins)
+
+        if "interpretability" in ev:
+            interp = ev["interpretability"]
+            cfg.evaluation.interpretability.gradcam_target_layer = interp.get(
+                "gradcam_target_layer", cfg.evaluation.interpretability.gradcam_target_layer
+            )
+            cfg.evaluation.interpretability.gradcam_alpha = float(
+                interp.get("gradcam_alpha", cfg.evaluation.interpretability.gradcam_alpha)
+            )
+            cfg.evaluation.interpretability.gradcam_colormap = interp.get(
+                "gradcam_colormap", cfg.evaluation.interpretability.gradcam_colormap
+            )
+
+        if "uncertainty" in ev:
+            unc = ev["uncertainty"]
+            cfg.evaluation.uncertainty.num_passes = unc.get(
+                "num_passes", cfg.evaluation.uncertainty.num_passes
+            )
+            cfg.evaluation.uncertainty.metric = unc.get(
+                "metric", cfg.evaluation.uncertainty.metric
+            )
+            thresh = unc.get("threshold", cfg.evaluation.uncertainty.threshold)
+            cfg.evaluation.uncertainty.threshold = float(thresh) if thresh is not None else None
+            cfg.evaluation.uncertainty.seed = unc.get(
+                "seed", cfg.evaluation.uncertainty.seed
+            )
 
     return cfg

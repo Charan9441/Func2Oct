@@ -1,0 +1,87 @@
+{
+  "model_type": "fundus",
+  "is_trained": true,
+  "gradcam": {
+    "target_layer": "layer4",
+    "modality_explained": "fundus",
+    "target_class": 0,
+    "predicted_class": 0,
+    "class_probabilities": [
+      0.6068762540817261,
+      0.3931237459182739
+    ],
+    "heatmap_path": "D:\\Fund2Oct\\outputs\\interpretability\\fundus_sample_heatmap.png",
+    "overlay_path": "D:\\Fund2Oct\\outputs\\interpretability\\fundus_sample_overlay.png"
+  },
+  "uncertainty": {
+    "predicted_class": 0,
+    "mean_probabilities": [
+      0.5878118872642517,
+      0.4121880531311035
+    ],
+    "predictive_entropy_nats": 0.6776450872421265,
+    "predictive_entropy_bits": 0.9776351451873779,
+    "expected_entropy_nats": 0.6654470562934875,
+    "mutual_information_nats": 0.012198030948638916,
+    "variance_per_class": [
+      0.006553585175424814,
+      0.006553584709763527
+    ],
+    "uncertainty_score": 0.6776450872421265,
+    "uncertainty_metric": "predictive_entropy",
+    "threshold": 0.5,
+    "is_high_uncertainty": true,
+    "num_passes": 10,
+    "metadata": {
+      "model_class": "FundusClassifier",
+      "num_dropout_layers": 1,
+      "dropout_layer_names": [
+        "dropout"
+      ],
+      "deterministic_fallback_used": false
+    },
+    "stochastic_probabilities": [
+      [
+        0.7027177810668945,
+        0.29728224873542786
+      ],
+      [
+        0.6082265377044678,
+        0.3917734622955322
+      ],
+      [
+        0.5513811707496643,
+        0.4486187994480133
+      ],
+      [
+        0.49638018012046814,
+        0.503619909286499
+      ],
+      [
+        0.580895721912384,
+        0.41910427808761597
+      ],
+      [
+        0.6121674180030823,
+        0.38783255219459534
+      ],
+      [
+        0.6199795007705688,
+        0.38002052903175354
+      ],
+      [
+        0.4287377893924713,
+        0.5712621808052063
+      ],
+      [
+        0.6806010603904724,
+        0.31939896941185
+      ],
+      [
+        0.5970321297645569,
+        0.4029679298400879
+      ]
+    ]
+  },
+  "clinical_disclaimer": "Uncertainty scores and Grad-CAM heatmaps represent research telemetry under MC Dropout and gradient-weighted activation mapping. They do not constitute calibrated diagnostic error probabilities or causal biological assertions."
+}
