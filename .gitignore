@@ -74,6 +74,7 @@ outputs/demo_assets/*
 !outputs/demo_assets/*.md
 !outputs/demo_assets/*.json
 !outputs/demo_assets/*.png
+!outputs/demo_assets/*.html
 !outputs/demo_assets/samples/
 outputs/audio/*
 !outputs/audio/.gitkeep

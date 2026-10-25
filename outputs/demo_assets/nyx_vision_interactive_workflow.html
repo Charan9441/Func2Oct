@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NyX Vision — Complete Technical Architecture & Interactive Workflow Chart</title>
+<style>
+  :root {
+    --bg-main: #070a12;
+    --bg-card: #0e1424;
+    --bg-card-hover: #151f38;
+    --border-color: #1e293b;
+    --border-active: #38bdf8;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent-cyan: #06b6d4;
+    --accent-teal: #14b8a6;
+    --accent-purple: #a855f7;
+    --accent-amber: #f59e0b;
+    --accent-emerald: #10b981;
+    --accent-rose: #f43f5e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  header {
+    background: linear-gradient(135deg, #090e1a 0%, #111a2e 50%, #0d2847 100%);
+    border-bottom: 1px solid var(--border-color);
+    padding: 20px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  .brand-group h1 {
+    font-size: 1.85rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-group p {
+    font-size: 0.92rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+  .badge-pills {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    padding: 6px 12px;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pill-cyan { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.35); }
+  .pill-purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35); }
+  .pill-teal { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.35); }
+
+  /* Toolbar */
+  .toolbar {
+    background: #0b1120;
+    border-bottom: 1px solid var(--border-color);
+    padding: 12px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .filter-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: var(--text-secondary);
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+  }
+  .filter-btn:hover {
+    background: #334155;
+    color: var(--text-primary);
+  }
+  .filter-btn.active {
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: #ffffff;
+    border-color: #38bdf8;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+  }
+  .zoom-controls {
+    display: flex;
+    gap: 6px;
+  }
+  .tool-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .tool-btn:hover { background: #334155; color: #fff; }
+
+  /* Main Workspace */
+  .workspace {
+    display: flex;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    height: calc(100vh - 145px);
+  }
+  .canvas-container {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+    cursor: grab;
+    background: radial-gradient(circle at center, #111a2e 0%, #070a12 80%);
+  }
+  .canvas-container:active { cursor: grabbing; }
+
+  /* SVG Graph */
+  svg.network-svg {
+    min-width: 1600px;
+    min-height: 1100px;
+    transform-origin: 0 0;
+    transition: transform 0.15s ease-out;
+  }
+  .node-group {
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .node-group:hover rect {
+    filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.7));
+    stroke: #38bdf8;
+  }
+  .node-group.selected rect {
+    stroke: #38bdf8;
+    stroke-width: 3px;
+    filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.9));
+  }
+  .edge-line {
+    stroke: #334155;
+    stroke-width: 2px;
+    stroke-dasharray: 4 2;
+    transition: all 0.3s ease;
+  }
+  .edge-line.active {
+    stroke: #38bdf8;
+    stroke-width: 3px;
+    stroke-dasharray: none;
+    filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));
+  }
+
+  /* Node Details Drawer */
+  .details-drawer {
+    width: 440px;
+    background: #0d1322;
+    border-left: 1px solid var(--border-color);
+    padding: 24px;
+    overflow-y: auto;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .drawer-header {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 14px;
+  }
+  .drawer-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #f8fafc;
+  }
+  .drawer-sub {
+    font-size: 0.85rem;
+    color: var(--accent-cyan);
+    font-family: monospace;
+    margin-top: 4px;
+  }
+  .section-card {
+    background: #131b2e;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .section-label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+  .section-body {
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: #cbd5e1;
+  }
+  .io-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    background: rgba(14, 165, 233, 0.15);
+    color: #38bdf8;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    margin: 3px 4px 3px 0;
+  }
+  .conn-list {
+    list-style: none;
+    margin-top: 6px;
+  }
+  .conn-item {
+    font-size: 0.84rem;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .conn-arrow { color: var(--accent-teal); font-weight: bold; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand-group">
+    <h1>🔬 NyX Vision: Multimodal Retinal Generative & Diagnostic Platform</h1>
+    <p>Complete System Technical Map, Neural Pipeline Architecture, File Matrix & Connectivity Graph</p>
+  </div>
+  <div class="badge-pills">
+    <span class="pill pill-cyan">EyeFound ViT Conditioning</span>
+    <span class="pill pill-purple">3D Latent Diffusion</span>
+    <span class="pill pill-teal">8-Layer Segmentation</span>
+    <span class="pill pill-cyan">Interactive 3D WebGL</span>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="filter-tabs">
+    <button class="filter-btn active" onclick="filterSubsystem('all')">🌐 All Subsystems</button>
+    <button class="filter-btn" onclick="filterSubsystem('qc')">📸 1. QC & Auto-Capture</button>
+    <button class="filter-btn" onclick="filterSubsystem('generative')">🧠 2. Generative Diffusion Pipeline</button>
+    <button class="filter-btn" onclick="filterSubsystem('volumetric')">🔬 3. 2D / 3D Volumetric Studio</button>
+    <button class="filter-btn" onclick="filterSubsystem('classifier')">🩺 4. Multimodal Diagnostics & Uncertainty</button>
+    <button class="filter-btn" onclick="filterSubsystem('benchmark')">⚖️ 5. Clinical Turing Study & Audio</button>
+  </div>
+  <div class="zoom-controls">
+    <button class="tool-btn" onclick="zoom(1.2)">🔍 Zoom In (+)</button>
+    <button class="tool-btn" onclick="zoom(0.8)">🔍 Zoom Out (-)</button>
+    <button class="tool-btn" onclick="resetZoom()">↺ Reset View</button>
+  </div>
+</div>
+
+<div class="workspace">
+  <div class="canvas-container" id="canvasContainer">
+    <svg class="network-svg" id="graphSvg" viewBox="0 0 1700 1150">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="#38bdf8" />
+        </marker>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+
+      <!-- ================= EDGES (DATAFLOW CHANNELS) ================= -->
+      <!-- Source to Root Subsystems -->
+      <path id="edge-nyx-qc" class="edge-line" d="M 850 85 L 350 200" marker-end="url(#arrow)"/>
+      <path id="edge-nyx-gen" class="edge-line" d="M 850 85 L 850 200" marker-end="url(#arrow)"/>
+      <path id="edge-nyx-app" class="edge-line" d="M 850 85 L 1350 200" marker-end="url(#arrow)"/>
+
+      <!-- QC Internal Flow -->
+      <path id="edge-qc-pre" class="edge-line" d="M 350 250 L 220 340" marker-end="url(#arrow)"/>
+      <path id="edge-qc-auto" class="edge-line" d="M 350 250 L 480 340" marker-end="url(#arrow)"/>
+
+      <!-- Generative Core Flow -->
+      <path id="edge-gen-enc" class="edge-line" d="M 850 250 L 700 340" marker-end="url(#arrow)"/>
+      <path id="edge-gen-diff" class="edge-line" d="M 700 390 L 850 470" marker-end="url(#arrow)"/>
+      <path id="edge-gen-vae" class="edge-line" d="M 1000 340 L 850 470" marker-end="url(#arrow)"/>
+      <path id="edge-gen-pipe" class="edge-line" d="M 850 520 L 850 610" marker-end="url(#arrow)"/>
+
+      <!-- Volumetric & Segmentation Flow -->
+      <path id="edge-pipe-seg" class="edge-line" d="M 850 660 L 650 750" marker-end="url(#arrow)"/>
+      <path id="edge-pipe-vol3d" class="edge-line" d="M 850 660 L 850 750" marker-end="url(#arrow)"/>
+      <path id="edge-pipe-octview" class="edge-line" d="M 850 660 L 1050 750" marker-end="url(#arrow)"/>
+
+      <!-- Diagnostic Classifier Flow -->
+      <path id="edge-app-clf" class="edge-line" d="M 1350 250 L 1350 340" marker-end="url(#arrow)"/>
+      <path id="edge-clf-multi" class="edge-line" d="M 1350 390 L 1350 470" marker-end="url(#arrow)"/>
+      <path id="edge-clf-unc" class="edge-line" d="M 1350 520 L 1250 610" marker-end="url(#arrow)"/>
+      <path id="edge-clf-cam" class="edge-line" d="M 1350 520 L 1450 610" marker-end="url(#arrow)"/>
+
+      <!-- Benchmarks, Turing & Audio -->
+      <path id="edge-app-turing" class="edge-line" d="M 1350 250 L 1550 340" marker-end="url(#arrow)"/>
+      <path id="edge-app-audio" class="edge-line" d="M 1350 250 L 1550 750" marker-end="url(#arrow)"/>
+
+      <!-- Cross-Subsystem Synapses -->
+      <path id="edge-qc-to-pipe" class="edge-line" d="M 350 250 Q 550 450 780 620" marker-end="url(#arrow)" stroke="#10b981" stroke-width="2.5"/>
+      <path id="edge-pipe-to-clf" class="edge-line" d="M 920 635 L 1270 495" marker-end="url(#arrow)" stroke="#c084fc" stroke-width="2.5"/>
+      <path id="edge-vol3d-to-app" class="edge-line" d="M 850 800 Q 1100 880 1350 250" marker-end="url(#arrow)" stroke="#06b6d4" stroke-width="2.5"/>
+
+      <!-- ================= NODES ================= -->
+
+      <!-- ROOT SOURCE: NyX Vision -->
+      <g class="node-group" id="node-root" onclick="selectNode('root')" transform="translate(700, 30)">
+        <rect width="300" height="65" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="3" filter="url(#glow)"/>
+        <text x="150" y="32" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="800">👑 NyX Vision</text>
+        <text x="150" y="52" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">Unified Retinal Generative & Diagnostic Suite</text>
+      </g>
+
+      <!-- 1. QC & AUTO-CAPTURE SUBSYSTEM -->
+      <g class="node-group sub-qc" id="node-quality_control" onclick="selectNode('quality_control')" transform="translate(230, 200)">
+        <rect width="240" height="55" rx="8" fill="#132338" stroke="#0ea5e9" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">quality_control.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#38bdf8" font-size="10.5">CLAHE OD/Macula & MLV Focus</text>
+      </g>
+
+      <g class="node-group sub-qc" id="node-preprocessing" onclick="selectNode('preprocessing')" transform="translate(100, 340)">
+        <rect width="240" height="55" rx="8" fill="#132338" stroke="#0ea5e9" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">preprocessing.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#94a3b8" font-size="10.5">FOV Mask, Crop, ImageNet Norm</text>
+      </g>
+
+      <g class="node-group sub-qc" id="node-auto_capture" onclick="selectNode('auto_capture')" transform="translate(360, 340)">
+        <rect width="240" height="55" rx="8" fill="#132338" stroke="#0ea5e9" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">auto_capture.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#38bdf8" font-size="10.5">3-Frame Auto-Trigger & Voice Cues</text>
+      </g>
+
+      <!-- 2. GENERATIVE PIPELINE SUBSYSTEM -->
+      <g class="node-group sub-generative" id="node-fundus_encoder" onclick="selectNode('fundus_encoder')" transform="translate(580, 340)">
+        <rect width="240" height="55" rx="8" fill="#241338" stroke="#a855f7" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">fundus_encoder.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#c084fc" font-size="10.5">EyeFound ViT-B/16 (512-dim Latent)</text>
+      </g>
+
+      <g class="node-group sub-generative" id="node-oct_vae" onclick="selectNode('oct_vae')" transform="translate(880, 340)">
+        <rect width="240" height="55" rx="8" fill="#241338" stroke="#a855f7" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">oct_vae.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#c084fc" font-size="10.5">OCTVAE2D AutoencoderKL (8x Down)</text>
+      </g>
+
+      <g class="node-group sub-generative" id="node-diffusion" onclick="selectNode('diffusion')" transform="translate(730, 470)">
+        <rect width="240" height="55" rx="8" fill="#241338" stroke="#a855f7" stroke-width="2" filter="url(#glow)"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">diffusion.py (LVDM)</text>
+        <text x="120" y="44" text-anchor="middle" fill="#e879f9" font-size="10.5">ConditionalLVDM3D (3D UNet)</text>
+      </g>
+
+      <g class="node-group sub-generative" id="node-pipeline" onclick="selectNode('pipeline')" transform="translate(730, 610)">
+        <rect width="240" height="55" rx="8" fill="#241338" stroke="#c084fc" stroke-width="2"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">pipeline.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#f0abfc" font-size="10.5">Fundus2OCTPipeline (32 Slices)</text>
+      </g>
+
+      <!-- 3. VOLUMETRIC & 2D/3D STUDIO SUBSYSTEM -->
+      <g class="node-group sub-volumetric" id="node-segmentation" onclick="selectNode('segmentation')" transform="translate(530, 750)">
+        <rect width="240" height="55" rx="8" fill="#132c28" stroke="#14b8a6" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">segmentation.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#2dd4bf" font-size="10.5">8 Retinal Layers & 9 Boundaries</text>
+      </g>
+
+      <g class="node-group sub-volumetric" id="node-volume_3d" onclick="selectNode('volume_3d')" transform="translate(730, 750)">
+        <rect width="240" height="55" rx="8" fill="#132c28" stroke="#14b8a6" stroke-width="2" filter="url(#glow)"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">volume_3d.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#5eead4" font-size="10.5">Interactive Plotly 3D WebGL MPR</text>
+      </g>
+
+      <g class="node-group sub-volumetric" id="node-oct_viewer" onclick="selectNode('oct_viewer')" transform="translate(930, 750)">
+        <rect width="240" height="55" rx="8" fill="#132c28" stroke="#14b8a6" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">oct_viewer.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#2dd4bf" font-size="10.5">Clinical 2D Viewer & ETDRS Grid</text>
+      </g>
+
+      <!-- 4. DIAGNOSTIC CLASSIFICATION & EXPLAINABILITY -->
+      <g class="node-group sub-classifier" id="node-classifier_fundus" onclick="selectNode('classifier_fundus')" transform="translate(1230, 340)">
+        <rect width="240" height="55" rx="8" fill="#331b1e" stroke="#f43f5e" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">classifier_fundus.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#fda4af" font-size="10.5">Model A Baseline (AUROC 0.846)</text>
+      </g>
+
+      <g class="node-group sub-classifier" id="node-classifier_multimodal" onclick="selectNode('classifier_multimodal')" transform="translate(1230, 470)">
+        <rect width="240" height="55" rx="8" fill="#331b1e" stroke="#f43f5e" stroke-width="2" filter="url(#glow)"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">classifier_multimodal.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#fb7185" font-size="10.5">Model B Gated Fusion (+9.6% Uplift)</text>
+      </g>
+
+      <g class="node-group sub-classifier" id="node-uncertainty" onclick="selectNode('uncertainty')" transform="translate(1130, 610)">
+        <rect width="240" height="55" rx="8" fill="#331b1e" stroke="#f43f5e" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">uncertainty.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#fda4af" font-size="10.5">Monte Carlo Dropout & Wilson CI</text>
+      </g>
+
+      <g class="node-group sub-classifier" id="node-gradcam" onclick="selectNode('gradcam')" transform="translate(1330, 610)">
+        <rect width="240" height="55" rx="8" fill="#331b1e" stroke="#f43f5e" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">gradcam.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#fda4af" font-size="10.5">Multimodal Visual Explanations</text>
+      </g>
+
+      <!-- 5. BENCHMARK, STUDY & PLATFORM ORCHESTRATION -->
+      <g class="node-group sub-benchmark" id="node-app" onclick="selectNode('app')" transform="translate(1230, 200)">
+        <rect width="240" height="55" rx="8" fill="#2d2212" stroke="#f59e0b" stroke-width="2" filter="url(#glow)"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">app.py (Gradio Studio)</text>
+        <text x="120" y="44" text-anchor="middle" fill="#fbbf24" font-size="10.5">3-Panel Studio & Live Event Loop</text>
+      </g>
+
+      <g class="node-group sub-benchmark" id="node-clinical_turing" onclick="selectNode('clinical_turing')" transform="translate(1450, 340)">
+        <rect width="240" height="55" rx="8" fill="#2d2212" stroke="#f59e0b" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">clinical_turing_test.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#fde047" font-size="10.5">Double-Blind Reader Study</text>
+      </g>
+
+      <g class="node-group sub-benchmark" id="node-audio" onclick="selectNode('audio')" transform="translate(1430, 750)">
+        <rect width="240" height="55" rx="8" fill="#2d2212" stroke="#f59e0b" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">Telugu Voice Engine</text>
+        <text x="120" y="44" text-anchor="middle" fill="#fde047" font-size="10.5">gTTS Localized Telugu Audio</text>
+      </g>
+
+      <!-- File Generation & Export -->
+      <g class="node-group sub-volumetric" id="node-generate_oct" onclick="selectNode('generate_oct')" transform="translate(730, 890)">
+        <rect width="240" height="55" rx="8" fill="#1e293b" stroke="#64748b" stroke-width="1.8"/>
+        <text x="120" y="26" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700">generate_oct.py</text>
+        <text x="120" y="44" text-anchor="middle" fill="#94a3b8" font-size="10.5">Export NIfTI (.nii.gz), TIFF, NPZ</text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- INSPECTOR DRAWER -->
+  <div class="details-drawer" id="detailsDrawer">
+    <div class="drawer-header">
+      <div class="drawer-title" id="drawerTitle">👑 NyX Vision (Source Node)</div>
+      <div class="drawer-sub" id="drawerSub">Root Architectural Command Center</div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">File / Module Location</div>
+      <div class="section-body" id="drawerFile">Func2Oct/ (Repository Root)</div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Technical Functionality & Algorithms</div>
+      <div class="section-body" id="drawerDesc">
+        Master architectural entrypoint orchestrating cross-modal retinal synthesis and diagnostic intelligence. Integrates real-time CLAHE landmarking, EyeFound ViT conditioning, 3D Latent Video Diffusion, 8-layer anatomical segmentation, Plotly 3D WebGL exploration, gated multimodal disease classification, and CDSCO MDR 2017 regulatory compliance.
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Data Contracts & Tensor Signatures</div>
+      <div class="section-body" id="drawerTensors">
+        <span class="io-tag">Input: RGB Fundus (H, W, 3)</span>
+        <span class="io-tag">Latent: (1, 4, 32, 32, 32)</span>
+        <span class="io-tag">Output: 3D OCT (32, 256, 256)</span>
+        <span class="io-tag">Export: NIfTI (.nii.gz)</span>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Upstream & Downstream Connections</div>
+      <ul class="conn-list" id="drawerConnections">
+        <li class="conn-item"><span class="conn-arrow">➔</span> quality_control.py (Preprocessing & Landmark Validation)</li>
+        <li class="conn-item"><span class="conn-arrow">➔</span> pipeline.py (3D Generative LVDM Diffusion Orchestration)</li>
+        <li class="conn-item"><span class="conn-arrow">➔</span> app.py (Interactive 3-Panel Gradio Clinical Studio)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+  const NODE_DETAILS = {
+    root: {
+      title: "👑 NyX Vision (Source Node)",
+      sub: "Root Architectural Source & System Coordinator",
+      file: "Func2Oct/ (Repository Root)",
+      desc: "Top-level source node coordinating the entire end-to-end multimodal retinal AI platform. Synthesizes 3D Optical Coherence Tomography (OCT) volumes from non-invasive 2D retinal fundus photography, segments 8 intra-retinal tissue layers, generates interactive 3D WebGL visualizations, and delivers gated multimodal disease classification with uncertainty quantification.",
+      tensors: ["Fundus: [1, 3, 256, 256]", "3D OCT: [32, 256, 256]", "Diagnostic Probabilities: [2]", "Wilson 95% CI"],
+      conns: [
+        { label: "quality_control.py", dir: "➔", role: "Triggers CLAHE retinal landmarking & focus clarity" },
+        { label: "pipeline.py", dir: "➔", role: "Dispatches latent generative synthesis" },
+        { label: "app.py", dir: "➔", role: "Hosts the 3-panel Gradio clinical studio" }
+      ]
+    },
+    quality_control: {
+      title: "📸 quality_control.py",
+      sub: "Retinal Image Quality Assurance & Geometric Verification",
+      file: "src/fundus2oct/data/quality_control.py",
+      desc: "Performs real-time validation of fundus photograph adequacy before generation. Implements Dual-Path CLAHE (Green channel for Optic Disc brightness, Lab luminance for Macular dark pit), Modified Laplacian Variance (MLV) and Tenengrad spectral gradient focus scoring, plus geometric anatomical verification enforcing 2.0 to 3.5 Disc Diameters distance and -15° to +15° angle.",
+      tensors: ["Input: [H, W, 3] RGB Fundus", "Output: QCReport (is_acceptable, clarity_score, od_bbox, macula_coords)"],
+      conns: [
+        { label: "preprocessing.py", dir: "➔", role: "Provides normalized cropped square tensors" },
+        { label: "auto_capture.py", dir: "➔", role: "Streams clarity scores for multi-frame trigger" },
+        { label: "pipeline.py", dir: "➔", role: "Passes verified disc-macula distance to condition diffusion" }
+      ]
+    },
+    preprocessing: {
+      title: "📐 preprocessing.py",
+      sub: "Retinal FOV Segmentation & Normalization",
+      file: "src/fundus2oct/data/preprocessing.py",
+      desc: "Isolates the active circular retinal Field of View (FOV) by masking out dark imaging borders. Applies aspect-ratio-preserving square center-cropping, bicubic resampling to 256×256 pixels, and ImageNet standardization (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]).",
+      tensors: ["Input: Raw PIL / Numpy Array", "Output Tensor: [3, 256, 256] float32"],
+      conns: [
+        { label: "quality_control.py", dir: "➔", role: "Supplies FOV-bounded canvas for landmarking" },
+        { label: "fundus_encoder.py", dir: "➔", role: "Feeds normalized tensor to EyeFound ViT" }
+      ]
+    },
+    auto_capture: {
+      title: "🎯 auto_capture.py",
+      sub: "Real-Time Video Stream Auto-Capture Engine",
+      file: "src/fundus2oct/data/auto_capture.py",
+      desc: "Monitors live retinal camera feeds (webcam or streaming socket at 6-8 FPS). Requires 3 consecutive frames with clarity score >= 0.50 and detected optic disc / macula landmarks before firing an automatic shutter trigger. Generates localized Telugu voice guidance cues (e.g., 'కెమెరాకు కొద్దిగా దగ్గరగా రండి').",
+      tensors: ["Input: Streaming frame [H, W, 3]", "Output: AutoCaptureDecision (capture_now, guidance_cue, consecutive_count)"],
+      conns: [
+        { label: "quality_control.py", dir: "➔", role: "Evaluates each incoming streaming frame" },
+        { label: "app.py", dir: "➔", role: "Controls Tab 2 live auto-capture loop" }
+      ]
+    },
+    fundus_encoder: {
+      title: "🧠 fundus_encoder.py",
+      sub: "EyeFound Vision Transformer Feature Extractor",
+      file: "src/fundus2oct/models/fundus_encoder.py",
+      desc: "Extracts high-level cross-modal semantic feature embeddings from 2D fundus photography. Adapts an EyeFound foundation model backbone (ViT-B/16 or ResNet-50) pretrained on extensive retinal datasets. Produces a 512-dimensional conditioning vector that dictates tissue thickness, vascular positioning, and drusen distribution.",
+      tensors: ["Input: [B, 3, 256, 256]", "Output Latent: [B, 512] float32"],
+      conns: [
+        { label: "diffusion.py", dir: "➔", role: "Cross-attention context embedding for UNet layers" },
+        { label: "classifier_multimodal.py", dir: "➔", role: "Supplies fundus feature branch for fusion" }
+      ]
+    },
+    oct_vae: {
+      title: "📦 oct_vae.py",
+      sub: "2D/3D Convolutional Variational Autoencoder (AutoencoderKL)",
+      file: "src/fundus2oct/models/oct_vae.py",
+      desc: "Compresses high-resolution OCT cross-sectional slices into an 8x downsampled continuous latent space. Encoder reduces 256×256 pixels to 32×32 with 4 latent channels, regularized by KL divergence. Decoder reconstructs high-fidelity B-scans with realistic optical speckle texture and reflective retinal interfaces.",
+      tensors: ["B-scan Input: [B, 1, 256, 256]", "Latent: [B, 4, 32, 32] (mu, logvar)", "Recon: [B, 1, 256, 256]"],
+      conns: [
+        { label: "diffusion.py", dir: "➔", role: "Defines the latent target manifold for diffusion steps" },
+        { label: "pipeline.py", dir: "➔", role: "Decodes 32 predicted latents into full 3D volume" }
+      ]
+    },
+    diffusion: {
+      title: "🌪️ diffusion.py (Conditional LVDM)",
+      sub: "3D Latent Video Diffusion Model for Volumetric Synthesis",
+      file: "src/fundus2oct/models/diffusion.py",
+      desc: "Treats 32 sequential OCT B-scans as a coherent volumetric sweep (spatial dimensions X/Z and slice progression Y). Implements 3D UNet with spatial and axial cross-attention conditioned on the 512-dim EyeFound fundus vector. Uses DDPM/DDIM reverse Markov samplers across 1000 timesteps to denoise Gaussian noise into anatomically continuous 3D latents.",
+      tensors: ["Latent Noise: [B, 4, 32, 32, 32]", "Conditioning: [B, 512]", "Denoised Latent: [B, 4, 32, 32, 32]"],
+      conns: [
+        { label: "fundus_encoder.py", dir: "➔", role: "Receives conditioning context" },
+        { label: "oct_vae.py", dir: "➔", role: "Sends denoised latents to decoder" }
+      ]
+    },
+    pipeline: {
+      title: "⚙️ pipeline.py (Fundus2OCTPipeline)",
+      sub: "End-to-End Generative Synthesis Orchestrator",
+      file: "src/fundus2oct/models/pipeline.py",
+      desc: "Unified interface orchestrating the complete generative inference workflow: loads weights for Fundus Encoder, LVDM, and VAE Decoder; manages stochastic seeding; executes diffusion sampling; decodes all 32 slice latents; and normalizes the synthesized volume into standard uint8 3D arrays.",
+      tensors: ["Input Fundus: [256, 256, 3]", "Output Volume: [32, 256, 256] uint8"],
+      conns: [
+        { label: "volume_3d.py", dir: "➔", role: "Feeds volume to 3D WebGL renderer" },
+        { label: "segmentation.py", dir: "➔", role: "Feeds slices for 8-layer boundary tracking" },
+        { label: "classifier_multimodal.py", dir: "➔", role: "Feeds central B-scan for gated fusion" }
+      ]
+    },
+    volume_3d: {
+      title: "🧊 volume_3d.py",
+      sub: "Interactive 3D WebGL Volumetric & MPR Engine",
+      file: "src/fundus2oct/visualization/volume_3d.py",
+      desc: "Constructs high-performance 3D Plotly WebGL visualizations supporting 360° orbit rotation, zoom, and pan. Features 4 architectures: Multi-Planar Reconstruction (MPR) orthogonal cutplanes (X, Y, Z), 3D Retinal Surface Topography (ILM & RPE elevation heightmaps depicting the foveal pit), Volumetric Isosurface Cloud, and 3-Panel 2D Orthogonal Montage with crosshairs.",
+      tensors: ["Input: [32, 256, 256] Volume", "Output: plotly.graph_objects.Figure", "2D Montage: [256, 768, 3]"],
+      conns: [
+        { label: "app.py", dir: "➔", role: "Renders inside Gradio gr.Plot in Panel 2" },
+        { label: "generate_oct.py", dir: "➔", role: "Shares surface and volumetric mesh representations" }
+      ]
+    },
+    segmentation: {
+      title: "🔬 segmentation.py",
+      sub: "8-Layer Retinal Segmentation & Profiling",
+      file: "src/fundus2oct/visualization/segmentation.py",
+      desc: "Segments 8 distinct intra-retinal layers and 9 boundary curves (ILM, RNFL, GCL+IPL, INL, OPL, ONL+IS, OS, RPE, BM) via intensity gradient peak tracking and dynamic programming. Computes calibrated retinal thickness (in micrometers), generates colored boundary overlays, 8-layer segmentation masks, and 4-panel diagnostic reports.",
+      tensors: ["Input: [256, 256] B-scan", "Output: SegmentationResult (boundaries, layer_thicknesses, colored_mask)"],
+      conns: [
+        { label: "oct_viewer.py", dir: "➔", role: "Provides boundary coordinates for clinical overlay" },
+        { label: "app.py", dir: "➔", role: "Generates HTML thickness telemetry cards in Panel 2" }
+      ]
+    },
+    oct_viewer: {
+      title: "📋 oct_viewer.py",
+      sub: "Clinical 2D Retinal Scan & ETDRS Macular Grid",
+      file: "src/fundus2oct/visualization/oct_viewer.py",
+      desc: "Renders clinical 2D cross-sections with 7 diagnostic palettes (bone, inferno, viridis, gray, inverted, hot, rainbow), calibrated 200 µm optical scale bars, and foveal depression markers. Generates standard 9-zone ETDRS macular grids (central fovea 1mm, inner ring 3mm, outer ring 6mm) for quantitative retinal thickening detection.",
+      tensors: ["Input: [256, 256] B-scan", "Output: [256, 256, 3] Clinical Image Canvas"],
+      conns: [
+        { label: "app.py", dir: "➔", role: "Supplies active 2D cross-sectional view in Panel 2" }
+      ]
+    },
+    classifier_fundus: {
+      title: "🩺 classifier_fundus.py (Model A)",
+      sub: "Fundus-Only 2D Diagnostic Baseline",
+      file: "src/fundus2oct/models/classifier_fundus.py",
+      desc: "Conventional single-modality baseline classifier operating exclusively on 2D color fundus images. Evaluates presence of Age-Related Macular Degeneration (AMD) vs. Control. Serves as benchmark baseline achieving AUROC of 0.846.",
+      tensors: ["Input: [B, 3, 256, 256]", "Output Logits: [B, 2]", "AUROC: 0.846"],
+      conns: [
+        { label: "classifier_multimodal.py", dir: "➔", role: "Benchmarked against Model B for AUROC uplift" },
+        { label: "app.py", dir: "➔", role: "Displayed in Panel 3 comparative predictions" }
+      ]
+    },
+    classifier_multimodal: {
+      title: "🧬 classifier_multimodal.py (Model B)",
+      sub: "Gated Multimodal Cross-Attention Fusion Classifier",
+      file: "src/fundus2oct/models/classifier_multimodal.py",
+      desc: "Cross-modal diagnostic classifier fusing superficial 2D fundus features with deep 3D OCT structural depth representations. Features a learnable sigmoid gating mechanism: alpha * fundus_feat + (1 - alpha) * oct_feat. Boosts classification performance from AUROC 0.846 to 0.942 (+9.6% clinical diagnostic uplift).",
+      tensors: ["Inputs: Fundus [B, 3, 256, 256] + OCT [B, 1, 1, 256, 256]", "Output: [B, 2] Probabilities", "AUROC: 0.942"],
+      conns: [
+        { label: "uncertainty.py", dir: "➔", role: "Evaluated under Monte Carlo Dropout passes" },
+        { label: "gradcam.py", dir: "➔", role: "Target of cross-modal Grad-CAM feature heatmaps" }
+      ]
+    },
+    uncertainty: {
+      title: "📊 uncertainty.py",
+      sub: "Monte Carlo Dropout Predictive Uncertainty Quantification",
+      file: "src/fundus2oct/evaluation/uncertainty.py",
+      desc: "Executes N=20 stochastic forward passes with active dropout during inference. Calculates predictive entropy (total uncertainty), mutual information (epistemic / model uncertainty), expected entropy (aleatoric / data noise), and Wilson score 95% binomial confidence intervals. Flags high-uncertainty scans requiring expert clinician review.",
+      tensors: ["Output: UncertaintyResult (entropy_nats, mutual_info, wilson_ci, is_high_uncertainty)"],
+      conns: [
+        { label: "app.py", dir: "➔", role: "Provides uncertainty alert pills & diagnostic telemetry" }
+      ]
+    },
+    gradcam: {
+      title: "🔥 gradcam.py",
+      sub: "Gradient-Weighted Class Activation Mapping (Grad-CAM)",
+      file: "src/fundus2oct/evaluation/gradcam.py",
+      desc: "Generates visual explainability heatmaps for both fundus and OCT convolutional layers. Calculates gradients of target class score with respect to feature activation maps. Highlights pathological drusen clusters, pigment abnormalities, and intra-retinal fluid pockets.",
+      tensors: ["Output: GradCAMResult (heatmap [256, 256], overlay_image [256, 256, 3])"],
+      conns: [
+        { label: "app.py", dir: "➔", role: "Visualized in Tab 1 interpretability drawer" }
+      ]
+    },
+    app: {
+      title: "🖥️ app.py (Gradio Studio)",
+      sub: "Production 3-Panel Ophthalmology Clinical Web Application",
+      file: "app.py",
+      desc: "Main Gradio application orchestrating all 3 clinical panels: Panel 1 (Fundus upload, CLAHE QC, clarity ring HUD), Panel 2 (Synthetic OCT 2D/3D Volumetric Studio with Plotly 3D WebGL MPR and NIfTI export), Panel 3 (Multimodal AI Disease Classifier with AUROC uplift and uncertainty). Also hosts real-time auto-capture video stream and double-blind Turing test.",
+      tensors: ["State: volume_state [32, 256, 256]", "Download: synthetic_oct_volume_3d.nii.gz (1.82 MB)"],
+      conns: [
+        { label: "volume_3d.py", dir: "➔", role: "Renders interactive 3D WebGL plot" },
+        { label: "clinical_turing_test.py", dir: "➔", role: "Runs double-blind discrimination study" },
+        { label: "Telugu Voice Engine", dir: "➔", role: "Plays localized patient voice reports" }
+      ]
+    },
+    clinical_turing: {
+      title: "⚖️ clinical_turing_test.py",
+      sub: "Double-Blind Clinical Reader Discrimination Benchmark",
+      file: "outputs/demo_assets/clinical_turing_test.py",
+      desc: "Double-blind evaluation framework where clinical readers (ophthalmologists, optometrists, AI researchers) discriminate synthetic OCT scans from real scans. Tracks reader confusion matrices, discrimination accuracy, Cohen's kappa inter-rater reliability, and diagnostic equivalence under CDSCO MDR 2017 Rule 51 guidelines.",
+      tensors: ["Manifest: 12 benchmark cases (6 Real, 6 Synthetic)", "Metrics: Reader Accuracy, Cohen's Kappa, AUROC"],
+      conns: [
+        { label: "app.py", dir: "➔", role: "Interactive reader test interface in Tab 3" }
+      ]
+    },
+    audio: {
+      title: "🔊 Telugu Voice Guidance & Audio",
+      sub: "Localized Patient Audio & Real-Time Voice Cues",
+      file: "outputs/audio/ & gTTS Engine",
+      desc: "Generates spoken patient audio reports in Telugu (తెలుగు), English, and Bilingual format using Google Text-to-Speech (gTTS). Explains image quality feedback, laterality status, landmark clarity, and diagnostic risk in culturally localized language for rural eye screening camps.",
+      tensors: ["Output: MP3 Audio Files in outputs/audio/"],
+      conns: [
+        { label: "app.py", dir: "➔", role: "Played via gr.Audio widgets in Panels 1 & 3" }
+      ]
+    },
+    generate_oct: {
+      title: "💾 generate_oct.py",
+      sub: "Standalone Volumetric Synthesis & NIfTI / TIFF Export",
+      file: "generate_oct.py",
+      desc: "Command-line synthesizer and medical file exporter. Converts 3D volumetric arrays into clinical NIfTI (.nii.gz) format with calibrated millimeter voxel spacing, multi-page TIFF stacks (.tif), animated preview GIFs, and compressed NumPy arrays (.npz).",
+      tensors: ["Input: [32, 256, 256] Volume", "Output: .nii.gz, .tif, .gif, .npz"],
+      conns: [
+        { label: "app.py", dir: "➔", role: "Pre-generates baseline 1.82 MB NIfTI for download button" }
+      ]
+    }
+  };
+
+  function selectNode(id) {
+    const data = NODE_DETAILS[id];
+    if (!data) return;
+
+    // Highlight node
+    document.querySelectorAll('.node-group').forEach(el => el.classList.remove('selected'));
+    const target = document.getElementById('node-' + id);
+    if (target) target.classList.add('selected');
+
+    // Update drawer
+    document.getElementById('drawerTitle').innerText = data.title;
+    document.getElementById('drawerSub').innerText = data.sub;
+    document.getElementById('drawerFile').innerText = data.file;
+    document.getElementById('drawerDesc').innerText = data.desc;
+
+    // Update tensors
+    const tensorsContainer = document.getElementById('drawerTensors');
+    tensorsContainer.innerHTML = '';
+    data.tensors.forEach(t => {
+      const tag = document.createElement('span');
+      tag.className = 'io-tag';
+      tag.innerText = t;
+      tensorsContainer.appendChild(tag);
+    });
+
+    // Update connections
+    const connsContainer = document.getElementById('drawerConnections');
+    connsContainer.innerHTML = '';
+    data.conns.forEach(c => {
+      const li = document.createElement('li');
+      li.className = 'conn-item';
+      li.innerHTML = `<span class="conn-arrow">${c.dir}</span> <strong>${c.label}</strong>: ${c.role}`;
+      connsContainer.appendChild(li);
+    });
+  }
+
+  function filterSubsystem(sub) {
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    const allNodes = document.querySelectorAll('.node-group');
+    if (sub === 'all') {
+      allNodes.forEach(n => n.style.opacity = '1');
+      document.querySelectorAll('.edge-line').forEach(e => e.style.opacity = '1');
+    } else {
+      allNodes.forEach(n => {
+        if (n.id === 'node-root' || n.classList.contains('sub-' + sub)) {
+          n.style.opacity = '1';
+        } else {
+          n.style.opacity = '0.2';
+        }
+      });
+      document.querySelectorAll('.edge-line').forEach(e => e.style.opacity = '0.15');
+    }
+  }
+
+  // Zoom and pan
+  let currentZoom = 1.0;
+  const svg = document.getElementById('graphSvg');
+  function zoom(factor) {
+    currentZoom = Math.min(Math.max(currentZoom * factor, 0.5), 2.2);
+    svg.style.transform = `scale(${currentZoom})`;
+  }
+  function resetZoom() {
+    currentZoom = 1.0;
+    svg.style.transform = 'scale(1.0)';
+  }
+
+  // Initialize with root
+  selectNode('root');
+</script>
+
+</body>
+</html>
