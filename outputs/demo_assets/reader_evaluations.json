@@ -1,6 +1,6 @@
 [
   {
-    "case_id": "OCT-TR-S003",
+    "case_id": "OCT-TR-S005",
     "reader_choice": "Synthetic OCT",
     "ground_truth": "Synthetic OCT",
     "is_correct": true,
@@ -12,36 +12,6 @@
       "Speckle Incoherence"
     ],
     "reader_notes": "Automated test submission",
-    "timestamp": "2026-10-24T17:31:58.830538+00:00"
-  },
-  {
-    "case_id": "OCT-TR-R003",
-    "reader_choice": "Synthetic OCT",
-    "ground_truth": "Real OCT",
-    "is_correct": false,
-    "is_fooled": false,
-    "confidence_pct": 75.0,
-    "realism_score": 3,
-    "layer_clarity_score": 4,
-    "observed_artifacts": [
-      "Speckle Incoherence"
-    ],
-    "reader_notes": "Automated test submission",
-    "timestamp": "2026-10-24T17:33:20.812081+00:00"
-  },
-  {
-    "case_id": "OCT-TR-R004",
-    "reader_choice": "Synthetic OCT",
-    "ground_truth": "Real OCT",
-    "is_correct": false,
-    "is_fooled": false,
-    "confidence_pct": 75.0,
-    "realism_score": 3,
-    "layer_clarity_score": 4,
-    "observed_artifacts": [
-      "Speckle Incoherence"
-    ],
-    "reader_notes": "Automated test submission",
-    "timestamp": "2026-10-24T17:34:50.700999+00:00"
+    "timestamp": "2026-10-25T03:05:07.530679+00:00"
   }
 ]
