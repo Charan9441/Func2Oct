@@ -21,6 +21,7 @@ nibabel>=5.0.0
 Pillow>=10.2.0
 opencv-python-headless>=4.9.0.80
 matplotlib>=3.8.0
+plotly>=5.18.0
 
 # Configuration & Utilities
 pyyaml>=6.0.1
