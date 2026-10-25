@@ -171,6 +171,45 @@ _global_auto_capture_engine = AutoCaptureEngine(
     required_consecutive_frames=3,
 )
 _last_auto_captured_frame: Optional[np.ndarray] = None
+_last_synthesized_volume: Optional[np.ndarray] = None
+
+
+def get_or_synthesize_volume(
+    volume_3d: Optional[np.ndarray] = None,
+    fundus_img: Optional[Union[np.ndarray, Image.Image]] = None,
+    class_hint: str = "CONTROL",
+) -> np.ndarray:
+    """Ensures a valid 32-slice 3D OCT volume is always available for visualization."""
+    global _last_synthesized_volume
+    if volume_3d is not None and isinstance(volume_3d, np.ndarray) and volume_3d.ndim == 3 and len(volume_3d) > 0:
+        _last_synthesized_volume = volume_3d
+        return volume_3d
+
+    if _last_synthesized_volume is not None and isinstance(_last_synthesized_volume, np.ndarray) and _last_synthesized_volume.ndim == 3:
+        return _last_synthesized_volume
+
+    try:
+        pipeline = get_generative_pipeline()
+        target_fundus = fundus_img if fundus_img is not None else create_demo_fundus(blur_level=0.0)
+        _last_synthesized_volume = pipeline.synthesize_3d_volume(
+            fundus=target_fundus,
+            class_hint=class_hint,
+            num_slices=32,
+            macula_dist_dd=2.7,
+            seed=42,
+        )
+        return _last_synthesized_volume
+    except Exception as e:
+        print(f"[get_or_synthesize_volume] Generative fallback: {e}")
+        from generate_oct import synthesize_realistic_3d_oct_volume
+        _last_synthesized_volume = synthesize_realistic_3d_oct_volume(
+            class_name=class_hint,
+            num_slices=32,
+            h=256,
+            w=256,
+            seed=42,
+        )
+        return _last_synthesized_volume
 
 # Persistent model cache for web demo
 _classifier_cache: Dict[str, Any] = {}
@@ -1072,7 +1111,20 @@ def inspect_fundus_quality(
         placeholder = create_demo_fundus(blur_level=0.0)
         image = Image.fromarray(placeholder)
 
-    img_arr = np.array(image.convert("RGB"))
+    if isinstance(image, Image.Image):
+        img_arr = np.array(image.convert("RGB"))
+    elif isinstance(image, np.ndarray):
+        if image.ndim == 2:
+            img_arr = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        elif image.ndim == 3 and image.shape[2] == 4:
+            img_arr = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+        else:
+            img_arr = image.copy()
+        image = Image.fromarray(img_arr)
+    else:
+        img_arr = create_demo_fundus(blur_level=0.0)
+        image = Image.fromarray(img_arr)
+
     eye_param = None if expected_eye == "Auto-detect" else expected_eye
     report = check_fundus_quality(img_arr, verify_geometry=verify_geom, expected_laterality=eye_param)
 
@@ -1109,6 +1161,47 @@ def inspect_fundus_quality(
     }
 
     return annotated, html_card, telemetry
+
+
+def inspect_fundus_and_render_studio(
+    image: Optional[Image.Image],
+    focus_thresh: float,
+    verify_geom: bool,
+    expected_eye: str,
+    disease_scenario: str,
+    active_slice: int,
+    viz_mode: str,
+) -> Tuple[
+    Optional[np.ndarray],  # HUD
+    str,                   # QC HTML
+    Dict[str, Any],        # Telemetry
+    np.ndarray,            # volume_state
+    np.ndarray,            # bscan_viewer
+    str,                   # thickness_html_card
+    np.ndarray,            # en_face_thumbnail
+]:
+    """Inspects fundus quality and immediately renders the active 3D volume view in Panel 2."""
+    annotated, html_card, telemetry = inspect_fundus_quality(
+        image, focus_thresh, verify_geom, expected_eye
+    )
+    class_hint = "MD" if "Macular Degeneration" in str(disease_scenario) else "CONTROL"
+    vol_3d = get_or_synthesize_volume(None, fundus_img=image, class_hint=class_hint)
+
+    slice_idx = int(np.clip(active_slice, 0, len(vol_3d) - 1))
+    display_img, thickness_card = render_slice_view(vol_3d, slice_idx, viz_mode)
+
+    mip = np.max(vol_3d, axis=1).astype(np.uint8)
+    en_face_square = cv2.resize(mip, (256, 256), interpolation=cv2.INTER_CUBIC)
+
+    return (
+        annotated,
+        html_card,
+        telemetry,
+        vol_3d,
+        display_img,
+        thickness_card,
+        en_face_square,
+    )
 
 
 def run_full_pipeline(
@@ -1274,12 +1367,10 @@ def render_slice_view(
     viz_mode: str,
 ) -> Tuple[np.ndarray, str]:
     """Renders active 2D B-scan slice according to chosen visualization mode."""
-    if volume_3d is None:
-        placeholder = np.zeros((256, 256, 3), dtype=np.uint8)
-        return placeholder, "<p style='color:#94a3b8;'>No volume generated yet.</p>"
+    vol = get_or_synthesize_volume(volume_3d)
 
-    slice_idx = int(np.clip(slice_idx, 0, len(volume_3d) - 1))
-    slice_bscan = volume_3d[slice_idx]
+    slice_idx = int(np.clip(slice_idx, 0, len(vol) - 1))
+    slice_bscan = vol[slice_idx]
 
     seg_res = segment_retinal_layers(slice_bscan, generate_visualizations=True)
     thickness_card = format_thickness_html(seg_res, slice_idx)
@@ -1297,8 +1388,38 @@ def render_slice_view(
             title=f"OCT B-Scan Slice #{slice_idx:02d} - 8-Layer Clinical Report",
         )
     elif viz_mode == "En-Face MIP Projection":
-        mip = np.max(volume_3d, axis=1).astype(np.uint8)
-        display_img = cv2.resize(cv2.cvtColor(mip, cv2.COLOR_GRAY2RGB), (256, 256), interpolation=cv2.INTER_CUBIC)
+        # Axial C-scan Maximum Intensity Projection
+        mip = np.max(vol, axis=1).astype(np.uint8)
+        mip_square = cv2.resize(mip, (256, 256), interpolation=cv2.INTER_CUBIC)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        mip_enhanced = clahe.apply(mip_square)
+        display_img = cv2.applyColorMap(mip_enhanced, cv2.COLORMAP_BONE)
+
+        thickness_card = f"""
+        <div class="card-telemetry" style="border-left: 4px solid #f59e0b;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: 700; font-size: 1.0rem; color: #f8fafc;">
+                    Axial En-Face Maximum Intensity Projection (C-Scan)
+                </span>
+                <span class="status-pill pill-warn">Volumetric C-Scan</span>
+            </div>
+            <div style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 8px;">
+                Synthesized across all <b>32 OCT B-scans</b> along the axial depth axis. Visualizes vascular arcades, foveal avascular zone (FAZ), and laminar hyper-reflective deposits.
+            </div>
+            <div class="metrics-grid">
+                <div class="metric-item">
+                    <div class="metric-label">Volume Dimensions</div>
+                    <div class="metric-value">32 × 256 × 256</div>
+                    <div class="metric-sub">Slices × Height × Width</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Active Slice Reference</div>
+                    <div class="metric-value">Slice #{slice_idx:02d} / 31</div>
+                    <div class="metric-sub">Central Fovea (~#16)</div>
+                </div>
+            </div>
+        </div>
+        """
     else:
         display_img = seg_res.overlay_image if seg_res.overlay_image is not None else cv2.cvtColor(slice_bscan, cv2.COLOR_GRAY2RGB)
 
@@ -1906,6 +2027,8 @@ def build_app() -> gr.Blocks:
                                 label="Visualization Display Mode",
                             )
 
+                        btn_panel2_render = gr.Button("⚡ Render Visual Display Mode / Update View", variant="secondary", size="sm")
+
                         bscan_viewer = gr.Image(
                             label="Active Cross-Sectional View",
                             type="numpy",
@@ -1994,9 +2117,31 @@ def build_app() -> gr.Blocks:
                 )
 
                 btn_qc_inspect.click(
-                    fn=inspect_fundus_quality,
-                    inputs=[fundus_input, focus_threshold_slider, verify_geometry_cb, expected_eye_radio],
-                    outputs=[hud_output, qc_html_card, telemetry_json],
+                    fn=inspect_fundus_and_render_studio,
+                    inputs=[
+                        fundus_input,
+                        focus_threshold_slider,
+                        verify_geometry_cb,
+                        expected_eye_radio,
+                        disease_scenario_select,
+                        slice_slider,
+                        viz_mode_radio,
+                    ],
+                    outputs=[
+                        hud_output,
+                        qc_html_card,
+                        telemetry_json,
+                        volume_state,
+                        bscan_viewer,
+                        thickness_html_card,
+                        en_face_thumbnail,
+                    ],
+                )
+
+                btn_panel2_render.click(
+                    fn=render_slice_view,
+                    inputs=[volume_state, slice_slider, viz_mode_radio],
+                    outputs=[bscan_viewer, thickness_html_card],
                 )
 
                 btn_qc_audio.click(
