@@ -298,7 +298,7 @@ def test_comparative_classification_and_auroc_ci():
         active_slice=16,
         viz_mode="Raw Synthetic B-Scan",
     )
-    telemetry = res[8]
+    telemetry = res[-1]
     assert "model_a_2d_baseline" in telemetry
     assert "model_b_3d_multimodal" in telemetry
     assert "auroc_uplift" in telemetry

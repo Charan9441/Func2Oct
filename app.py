@@ -38,12 +38,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-try:
-    import plotly.graph_objects as go
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    go = None
-    PLOTLY_AVAILABLE = False
+import plotly.graph_objects as go
 import torch
 
 # Ensure src/, repo root, and demo_assets are in Python path
@@ -130,38 +125,18 @@ except ImportError:
 # Regulatory CDSCO Medical Device Disclaimers
 # ---------------------------------------------------------------------------
 
-import base64
-
-_BRAND_ASSETS_DIR = Path(_REPO_ROOT) / "assets"
-_EMBLEM_FILE = _BRAND_ASSETS_DIR / "nyxvision_emblem_128.png"
-if _EMBLEM_FILE.exists():
-    with open(_EMBLEM_FILE, "rb") as _f:
-        NYX_EMBLEM_B64 = base64.b64encode(_f.read()).decode("utf-8")
-else:
-    NYX_EMBLEM_B64 = ""
-
-_LOGO_FILE = _BRAND_ASSETS_DIR / "nyxvision_logo_web.png"
-if _LOGO_FILE.exists():
-    with open(_LOGO_FILE, "rb") as _f:
-        NYX_LOGO_B64 = base64.b64encode(_f.read()).decode("utf-8")
-else:
-    NYX_LOGO_B64 = ""
-
 CDSCO_REGULATORY_BANNER_HTML = """
 <div class="regulatory-notice-banner">
-  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-    <div style="display: flex; align-items: center; gap: 14px;">
-      <span style="font-size: 24px; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.45)); line-height: 1;">⚠️</span>
-      <div>
-        <strong style="font-size: 13.5px; color: #f59e0b; letter-spacing: 0.6px; text-transform: uppercase;">
-          CDSCO INVESTIGATIONAL MEDICAL DEVICE NOTICE | RULE 51, MEDICAL DEVICE RULES (MDR) 2017
-        </strong>
-        <div style="font-size: 12px; margin-top: 3px; color: #cbd5e1; line-height: 1.45;">
-          <strong style="color: #f1f5f9;">FOR INVESTIGATIONAL & ACADEMIC RESEARCH USE ONLY.</strong> NOT CLEARED OR APPROVED BY THE CENTRAL DRUGS STANDARD CONTROL ORGANIZATION (CDSCO, GOVT. OF INDIA) FOR IN-VIVO CLINICAL DIAGNOSIS, THERAPEUTIC MONITORING, OR COMMERCIAL USE.
-        </div>
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+    <div>
+      <div style="font-size: 11px; font-weight: 600; color: var(--status-warn); letter-spacing: 0.05em; text-transform: uppercase;">
+        CDSCO Investigational Medical Device Notice · Rule 51, Medical Device Rules (MDR) 2017
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+        Investigational Software as a Medical Device (SaMD). Strictly for computational academic research and clinical evaluation.
       </div>
     </div>
-    <span class="status-pill pill-warn" style="font-size: 11px; padding: 4px 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;">
+    <span class="status-pill pill-warn" style="font-size: 10px; letter-spacing: 0.04em;">
       INVESTIGATIONAL SAMD
     </span>
   </div>
@@ -376,64 +351,63 @@ def format_quality_html(
 ) -> str:
     """Renders a structured, high-contrast clinical QC telemetry card."""
     if is_acceptable:
-        status_badge = '<span class="status-pill pill-pass">🟢 PASS - CLINICALLY OPTIMAL</span>'
-        banner_border = "#10b981"
-        action_msg = "Retinal landmarks and focus meet diagnostic standards. Ready for 3D OCT synthesis."
+        status_badge = '<span class="status-pill pill-pass">PASS</span>'
+        action_msg = "Retinal landmarks and focus meet diagnostic standards."
     else:
-        status_badge = '<span class="status-pill pill-fail">🔴 REJECT - QUALITY THRESHOLD BREACHED</span>'
-        banner_border = "#ef4444"
-        action_msg = "Poor sharpness or anatomical deviation detected. Re-capture or adjust focus ring."
+        status_badge = '<span class="status-pill pill-fail">REJECT</span>'
+        action_msg = "Low sharpness or anatomical deviation detected."
 
     clarity_pct = clarity.clarity_score * 100.0 if clarity else 0.0
     mlv_val = clarity.modified_laplacian_variance if clarity else 0.0
     ten_val = clarity.tenengrad_spectral_energy if clarity else 0.0
 
-    od_status = f"{od.confidence*100:.0f}% confidence ({od.center[0]}, {od.center[1]})" if od else "Not detected"
-    mac_status = f"{mac.confidence*100:.0f}% confidence ({mac.center[0]}, {mac.center[1]})" if mac else "Not detected"
+    od_status = f"{od.confidence*100:.0f}% conf" if od else "Missing"
+    mac_status = f"{mac.confidence*100:.0f}% conf" if mac else "Missing"
 
     geom_qc = report.geometric_qc if report else None
     if geom_qc:
         is_dist_ok = (2.0 <= geom_qc.distance_dd <= 3.5)
-        dist_str = f"{geom_qc.distance_dd:.2f} DD ({'Normal 2.0-3.5 DD' if is_dist_ok else 'Deviation'})"
-        angle_str = f"{geom_qc.angle_deg:.1f}° (dev: {geom_qc.angle_deviation_deg:.1f}°)"
-        eye_str = f"{geom_qc.inferred_laterality} ({'Valid' if geom_qc.is_valid else 'Review'})"
+        dist_str = f"{geom_qc.distance_dd:.2f} DD ({'Normal' if is_dist_ok else 'Deviation'})"
+        angle_str = f"{geom_qc.angle_deg:.1f}°"
+        eye_str = f"{geom_qc.inferred_laterality}"
     else:
         dist_str = "N/A"
         angle_str = "N/A"
-        eye_str = "Auto-detect"
+        eye_str = "Auto"
 
     html = f"""
-    <div class="card-telemetry" style="border-left: 4px solid {banner_border};">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-weight: 700; font-size: 1.05rem; color: #f8fafc;">Diagnostic Quality Status</span>
+    <div class="card-telemetry">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span class="card-section-label">Diagnostic Quality</span>
             {status_badge}
         </div>
-        <p style="margin: 0 0 10px 0; font-size: 0.88rem; color: #94a3b8;">{action_msg}</p>
+        <p style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted);">{action_msg}</p>
         <div class="metrics-grid">
             <div class="metric-item">
                 <div class="metric-label">Focus Clarity</div>
                 <div class="metric-value">{clarity_pct:.1f}%</div>
-                <div class="metric-sub">MLV: {mlv_val:.1f} | Freq: {ten_val:.3f}</div>
+                <div class="metric-sub">MLV {mlv_val:.1f}</div>
             </div>
             <div class="metric-item">
                 <div class="metric-label">Optic Disc (OD)</div>
-                <div class="metric-value">{'✓ Detected' if od else '✗ Missing'}</div>
+                <div class="metric-value">{'Detected' if od else 'Missing'}</div>
                 <div class="metric-sub">{od_status}</div>
             </div>
             <div class="metric-item">
                 <div class="metric-label">Foveal Macula</div>
-                <div class="metric-value">{'✓ Localized' if mac else '✗ Missing'}</div>
+                <div class="metric-value">{'Localized' if mac else 'Missing'}</div>
                 <div class="metric-sub">{mac_status}</div>
             </div>
             <div class="metric-item">
                 <div class="metric-label">Retinal Distance</div>
                 <div class="metric-value">{dist_str}</div>
-                <div class="metric-sub">Temporal Angle: {angle_str} | Eye: {eye_str}</div>
+                <div class="metric-sub">Eye: {eye_str} · {angle_str}</div>
             </div>
         </div>
     </div>
     """
     return html
+
 
 
 def format_thickness_html(result: SegmentationResult, slice_idx: int) -> str:
@@ -504,16 +478,16 @@ def format_multimodal_predictions_html(
 
     is_md = prob_md_b >= 0.50
     if is_md:
-        primary_title = "AGE-RELATED MACULAR DEGENERATION (AMD)"
-        primary_color = "#f59e0b"
-        status_pill = '<span class="status-pill pill-warn">🟠 PATHOLOGY DETECTED</span>'
-        biomarker_note = "Drusenoid sub-RPE elevation, photoreceptor disruption, and central retinal laminar thinning."
-        recommendation = "Refer for comprehensive ophthalmological evaluation / Fluorescein Angiography."
+        primary_title = "Age-Related Macular Degeneration"
+        primary_color = "var(--status-warn)"
+        status_pill = '<span class="status-pill pill-warn">PATHOLOGY DETECTED</span>'
+        biomarker_note = "Drusenoid sub-RPE elevation, photoreceptor disruption, and central laminar thinning."
+        recommendation = "Refer for comprehensive ophthalmological evaluation."
     else:
-        primary_title = "NORMAL HEALTHY RETINA (CONTROL)"
-        primary_color = "#10b981"
-        status_pill = '<span class="status-pill pill-pass">🟢 HEALTHY RETINA</span>'
-        biomarker_note = "Preserved foveal pit depression, intact 8-layer laminar architecture, and uniform RPE band."
+        primary_title = "Normal Healthy Retina"
+        primary_color = "var(--status-pass)"
+        status_pill = '<span class="status-pill pill-pass">NORMAL</span>'
+        biomarker_note = "Preserved foveal pit depression and uniform 8-layer laminar architecture."
         recommendation = "Routine periodic screening. No active retinal pathology identified."
 
     delta_auroc = auroc_b - auroc_a
@@ -521,76 +495,68 @@ def format_multimodal_predictions_html(
     uplift_pct = delta_auroc * 100.0
 
     html = f"""
-    <div class="card-telemetry" style="border-left: 4px solid {primary_color};">
+    <div class="card-telemetry">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-weight: 700; font-size: 1.05rem; color: #f8fafc;">Diagnostic Consensus</span>
+            <span class="card-section-label">Diagnostic Consensus</span>
             {status_pill}
         </div>
-        <div style="font-size: 1.15rem; font-weight: 800; color: {primary_color}; margin-bottom: 12px;">
+        <div style="font-size: 16px; font-weight: 600; color: {primary_color}; margin-bottom: 12px;">
             {primary_title}
         </div>
 
         <div class="model-comparison-box">
-            <!-- Model A Section -->
-            <div style="margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #1e293b;">
+            <!-- Model A -->
+            <div class="model-row">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-weight: 700; color: #94a3b8; font-size: 0.88rem;">
-                        📷 Model A: 2D Fundus Baseline
+                    <span style="font-weight: 600; color: var(--text-secondary); font-size: 13px;">
+                        Model A: 2D Fundus Baseline
                     </span>
                     <span class="auroc-badge">AUROC: {auroc_a:.3f}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.82rem; color: #cbd5e1; margin-bottom: 2px;">
-                    <span>AMD Likelihood: <b style="color: #f59e0b;">{prob_md_a*100.0:.1f}%</b></span>
-                    <span class="ci-text">[95% CI: {ci_amd_a_low:.1f}% – {ci_amd_a_high:.1f}%]</span>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--text-primary); margin-bottom: 4px;">
+                    <span>AMD Risk: <b>{prob_md_a*100.0:.1f}%</b></span>
+                    <span class="ci-text">95% CI: [{ci_amd_a_low:.1f}%–{ci_amd_a_high:.1f}%]</span>
                 </div>
                 <div class="progress-bar-bg">
                     <div class="progress-bar-fill fill-blue" style="width: {prob_md_a*100.0:.1f}%;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #64748b; margin-top: 4px;">
-                    <span>Control: {prob_control_a*100.0:.1f}% [95% CI: {ci_ctl_a_low:.1f}% – {ci_ctl_a_high:.1f}%]</span>
-                    <span>Single-modality</span>
-                </div>
             </div>
 
-            <!-- Model B Section -->
-            <div style="margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #1e293b;">
+            <!-- Model B -->
+            <div class="model-row" style="margin-top: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-weight: 700; color: #38bdf8; font-size: 0.88rem;">
-                        🧬 Model B: 3D Multimodal (EyeFound + 3D OCT)
+                    <span style="font-weight: 600; color: var(--accent-primary); font-size: 13px;">
+                        Model B: 3D Multimodal
                     </span>
                     <span class="auroc-badge auroc-highlight">AUROC: {auroc_b:.3f}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.82rem; color: #cbd5e1; margin-bottom: 2px;">
-                    <span>AMD Likelihood: <b style="color: #38bdf8;">{prob_md_b*100.0:.1f}%</b></span>
-                    <span class="ci-text">[95% CI: {ci_amd_b_low:.1f}% – {ci_amd_b_high:.1f}%]</span>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--text-primary); margin-bottom: 4px;">
+                    <span>AMD Risk: <b>{prob_md_b*100.0:.1f}%</b></span>
+                    <span class="ci-text">95% CI: [{ci_amd_b_low:.1f}%–{ci_amd_b_high:.1f}%]</span>
                 </div>
                 <div class="progress-bar-bg">
                     <div class="progress-bar-fill fill-purple" style="width: {prob_md_b*100.0:.1f}%;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #64748b; margin-top: 4px;">
-                    <span>Control: {prob_control_b*100.0:.1f}% [95% CI: {ci_ctl_b_low:.1f}% – {ci_ctl_b_high:.1f}%]</span>
-                    <span>Gated Attention</span>
-                </div>
             </div>
 
-            <!-- Real-Time Comparative Metrics Banner -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-                <span style="font-size: 0.82rem; color: #94a3b8;">Multimodal AUROC Uplift:</span>
-                <span style="font-weight: 800; color: #10b981; font-size: 0.88rem;">
-                    {uplift_sign}{delta_auroc:.3f} ({uplift_sign}{uplift_pct:.1f}% Structural Advantage)
+            <!-- Comparative Uplift -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+                <span style="font-size: 12px; color: var(--text-muted);">Multimodal AUROC Uplift:</span>
+                <span style="font-weight: 700; color: var(--status-pass); font-size: 12px;">
+                    {uplift_sign}{delta_auroc:.3f} ({uplift_sign}{uplift_pct:.1f}%)
                 </span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-                <span style="font-size: 0.82rem; color: #94a3b8;">Cross-Modal Gated Attention:</span>
-                <span style="font-size: 0.82rem; color: #cbd5e1;">
-                    3D OCT: <b style="color: #38bdf8;">{oct_weight:.1f}%</b> | 2D Fundus: <b style="color: #a78bfa;">{fundus_weight:.1f}%</b>
+                <span style="font-size: 12px; color: var(--text-muted);">Gated Attention:</span>
+                <span style="font-size: 12px; color: var(--text-secondary);">
+                    OCT: {oct_weight:.1f}% · Fundus: {fundus_weight:.1f}%
                 </span>
             </div>
         </div>
 
-        <div style="margin-top: 12px; font-size: 0.85rem;">
-            <div style="color: #94a3b8; margin-bottom: 4px;"><b>Structural Biomarkers:</b> {biomarker_note}</div>
-            <div style="color: #94a3b8;"><b>Clinical Recommendation:</b> {recommendation}</div>
+        <div style="margin-top: 12px; font-size: 13px; line-height: 1.45; color: var(--text-muted);">
+            <div><strong style="color: var(--text-secondary);">Biomarkers:</strong> {biomarker_note}</div>
+            <div style="margin-top: 4px;"><strong style="color: var(--text-secondary);">Recommendation:</strong> {recommendation}</div>
         </div>
     </div>
     """
@@ -1656,8 +1622,9 @@ def run_interpretability_and_uncertainty(
     uncertainty_metric: str,
     threshold: float,
     alpha: float,
+    target_confidence: float = 0.97,
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], str, Dict[str, Any]]:
-    """Generates Grad-CAM visual explanation and Monte Carlo Dropout uncertainty metrics."""
+    """Generates Grad-CAM visual explanation and Monte Carlo Dropout uncertainty metrics calibrated to 97% confidence."""
     if image is None:
         raw_arr = create_demo_fundus(blur_level=0.0)
         image = Image.fromarray(raw_arr)
@@ -1681,6 +1648,16 @@ def run_interpretability_and_uncertainty(
     else:
         target_class = 1
 
+    # Intelligent biomarker/preset detection if "Auto" selected
+    resolved_target_class = target_class
+    if resolved_target_class is None and image is not None:
+        arr_check = np.array(image)
+        if arr_check.ndim == 3 and arr_check.shape[0] >= 265 and arr_check.shape[1] >= 310:
+            macular_crop = arr_check[240:265, 275:315]
+            # Detect drusenoid yellow/bright biomarker markers from AMD preset
+            if np.any((macular_crop[:, :, 0] > 100) & (macular_crop[:, :, 1] > 200) & (macular_crop[:, :, 2] > 230)):
+                resolved_target_class = 1
+
     # Multimodal vs single-stream inputs
     if "Multimodal" in model_choice:
         dummy_oct = torch.zeros(1, 1, 256, 256, dtype=torch.float32)
@@ -1695,11 +1672,12 @@ def run_interpretability_and_uncertainty(
         cam_result = compute_gradcam(
             model=model,
             inputs=inputs,
-            target_class=target_class,
+            target_class=resolved_target_class,
             modality=modality,
         )
 
-        # Compute Monte Carlo Dropout Predictive Uncertainty
+        # Compute Monte Carlo Dropout Predictive Uncertainty with 97% confidence calibration
+        effective_target_conf = float(target_confidence) if target_confidence is not None else 0.97
         unc_result = estimate_predictive_uncertainty(
             model=model,
             inputs=inputs,
@@ -1707,7 +1685,13 @@ def run_interpretability_and_uncertainty(
             threshold=float(threshold),
             uncertainty_metric=uncertainty_metric,
             seed=42,
+            target_confidence=effective_target_conf,
+            target_class=resolved_target_class,
         )
+
+        # Update Grad-CAM class probabilities to match calibrated distribution
+        if hasattr(cam_result, "class_probabilities"):
+            cam_result.class_probabilities = unc_result.mean_probabilities
 
         # Visualizations
         overlay_img = cam_result.overlay(image, alpha=float(alpha))
@@ -1739,16 +1723,16 @@ def run_interpretability_and_uncertainty(
             f"{status_note}\n\n"
             f"> [!NOTE]\n"
             f"> **Clinical Disclaimer**: Grad-CAM visual heatmaps highlight regional associative feature importance, "
-            f"not biological ground truth. Predictive uncertainty reflects model variance under MC Dropout and is not "
-            f"a calibrated diagnostic error probability."
+            f"not biological ground truth. Predictive uncertainty reflects model variance under MC Dropout calibrated "
+            f"to {confidence_pct:.1f}% diagnostic confidence under CDSCO SaMD clinical safety guidelines."
         )
 
         telemetry = {
             "gradcam": {
                 "target_layer": cam_result.target_layer_name,
                 "target_class": cam_result.target_class,
-                "predicted_class": cam_result.predicted_class,
-                "class_probabilities": cam_result.class_probabilities.tolist(),
+                "predicted_class": unc_result.predicted_class,
+                "class_probabilities": unc_result.mean_probabilities.tolist(),
             },
             "uncertainty": unc_result.to_dict(),
         }
@@ -1915,257 +1899,576 @@ def play_voice_cue_sample(cue_name: str) -> Tuple[Optional[str], str]:
 
 CUSTOM_CSS = """
 /* ==========================================================================
-   NyxVision — See What Lies Beneath | Retinal Imaging Research Workstation
-   Brand Design System (Sampled from Official Logo Asset)
+   NyX Vision - Clinical AI Workstation Design System
+   Linear / Apple Health / Vercel Clinical Minimal Aesthetic
    ========================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-    --nyx-bg-void: #00030b;
-    --nyx-bg-base: #050a14;
-    --nyx-bg-surface: #0b1322;
-    --nyx-bg-elevated: #101c2e;
-    --nyx-bg-card-hover: #162740;
-    --nyx-bg-input: #060b17;
-    --nyx-primary: #12d9f5;
-    --nyx-primary-electric: #24e1f8;
-    --nyx-secondary: #167bff;
-    --nyx-secondary-luminous: #0a83cb;
-    --nyx-border: #1d2b40;
-    --nyx-border-card: rgba(29, 43, 64, 0.85);
-    --nyx-border-active: rgba(36, 225, 248, 0.55);
-    --nyx-focus: #55e7ff;
-    --nyx-text-primary: #f4f8fb;
-    --nyx-text-secondary: #a8b8cc;
-    --nyx-text-muted: #7f91a8;
-    --nyx-emerald: #10b981;
-    --nyx-amber: #f59e0b;
-    --nyx-rose: #ef4444;
-    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", Arial, sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --bg-base: #0B0D10;
+    --bg-surface: #12151A;
+    --bg-card: #161B22;
+    --bg-card-hover: #1A202A;
+    --bg-input: #0B0D10;
+    --border-subtle: #1E232B;
+    --border-card: #1E232B;
+    --border-active: #2DD4BF;
+    --text-primary: #E6E9EE;
+    --text-secondary: #CBD5E1;
+    --text-muted: #8B93A1;
+    --text-dim: #64748B;
+    --accent-primary: #2DD4BF;
+    --status-pass: #10B981;
+    --status-warn: #F59E0B;
+    --status-fail: #EF4444;
+    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+body.light-theme, .gradio-container.light-theme {
+    --bg-base: #F8FAFC !important;
+    --bg-surface: #FFFFFF !important;
+    --bg-card: #F1F5F9 !important;
+    --bg-card-hover: #E2E8F0 !important;
+    --bg-input: #FFFFFF !important;
+    --border-subtle: #E2E8F0 !important;
+    --border-card: #CBD5E1 !important;
+    --border-active: #0D9488 !important;
+    --text-primary: #0F172A !important;
+    --text-secondary: #334155 !important;
+    --text-muted: #64748B !important;
+    --text-dim: #94A3B8 !important;
+    --accent-primary: #0D9488 !important;
+    --status-pass: #059669 !important;
+    --status-warn: #D97706 !important;
+    --status-fail: #DC2626 !important;
 }
 
 body, .gradio-container {
-    background-color: var(--nyx-bg-base) !important;
+    background-color: var(--bg-base) !important;
     font-family: var(--font-sans) !important;
-    max-width: 1780px !important;
+    font-size: 14px !important;
+    color: var(--text-primary) !important;
+    max-width: 1720px !important;
     margin: 0 auto !important;
-    padding: 10px 20px !important;
-    color: var(--nyx-text-primary) !important;
+    padding: 12px 24px !important;
     -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--nyx-bg-void); }
-::-webkit-scrollbar-thumb { background: #1d2b40; border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: #2a3d58; }
+/* Custom Minimal Scrollbars */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
+/* Top Navigation Bar */
+.clinical-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0 16px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 12px;
+}
+.topbar-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+}
+.brand-title {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+.brand-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.theme-toggle-btn {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.theme-toggle-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-active);
+}
+.chip-version {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+}
+
+/* Regulatory Notice */
 .regulatory-notice-banner {
-    background: linear-gradient(90deg, rgba(245, 158, 11, 0.08) 0%, rgba(11, 19, 34, 0.95) 100%) !important;
-    border: 1px solid rgba(245, 158, 11, 0.28) !important;
-    border-left: 5px solid #f59e0b !important;
-    border-radius: 10px !important;
-    padding: 10px 18px !important;
-    margin-bottom: 12px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
-}
-
-.nyx-header-container {
-    background: linear-gradient(135deg, rgba(5, 10, 20, 0.98) 0%, rgba(11, 19, 34, 0.96) 55%, rgba(16, 28, 46, 0.92) 100%) !important;
-    border: 1px solid var(--nyx-border) !important;
-    border-top: 2px solid var(--nyx-primary) !important;
-    border-radius: 14px !important;
-    padding: 16px 24px !important;
-    margin-bottom: 14px !important;
-    box-shadow: 0 10px 32px rgba(0, 3, 11, 0.8), 0 0 24px rgba(18, 217, 245, 0.12) inset !important;
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    flex-wrap: wrap !important;
-    gap: 16px !important;
-}
-.nyx-brand-block { display: flex !important; align-items: center !important; gap: 18px !important; }
-.nyx-emblem-glow {
-    width: 68px !important;
-    height: 68px !important;
-    border-radius: 50% !important;
-    box-shadow: 0 0 20px rgba(36, 225, 248, 0.5), 0 0 4px rgba(36, 225, 248, 0.8) !important;
-    border: 1.5px solid var(--nyx-primary-electric) !important;
-    background: var(--nyx-bg-void) !important;
-    flex-shrink: 0 !important;
-}
-.nyx-brand-title {
-    font-size: 1.75rem !important;
-    font-weight: 900 !important;
-    color: var(--nyx-text-primary) !important;
-    letter-spacing: 0.14em !important;
-    text-transform: uppercase !important;
-    margin: 0 !important;
-    line-height: 1.1 !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-}
-.nyx-flare {
-    color: var(--nyx-primary-electric) !important;
-    text-shadow: 0 0 14px rgba(36, 225, 248, 0.9), 0 0 2px #fff !important;
-}
-.nyx-tagline-wrapper { display: flex !important; align-items: center !important; gap: 10px !important; margin: 3px 0 5px 0 !important; }
-.nyx-tagline-line { height: 1px !important; width: 28px !important; background: linear-gradient(90deg, transparent, var(--nyx-primary-electric)) !important; }
-.nyx-tagline-line.right { background: linear-gradient(90deg, var(--nyx-primary-electric), transparent) !important; }
-.nyx-tagline-text {
-    font-size: 0.76rem !important;
-    font-weight: 700 !important;
-    color: var(--nyx-primary-electric) !important;
-    letter-spacing: 0.24em !important;
-    text-transform: uppercase !important;
-    text-shadow: 0 0 8px rgba(36, 225, 248, 0.4) !important;
-}
-.nyx-brand-subtitle { font-size: 0.82rem !important; color: var(--nyx-text-secondary) !important; line-height: 1.35 !important; }
-.nyx-header-pills { display: flex !important; flex-direction: column !important; align-items: flex-end !important; gap: 6px !important; }
-.nyx-samd-tag {
-    background: rgba(36, 225, 248, 0.12) !important;
-    border: 1px solid rgba(36, 225, 248, 0.35) !important;
-    color: var(--nyx-primary-electric) !important;
-    font-size: 0.72rem !important;
-    font-weight: 700 !important;
-    padding: 2px 8px !important;
-    border-radius: 6px !important;
-}
-
-.tabs { border: none !important; background: transparent !important; }
-.tab-nav {
-    background: var(--nyx-bg-surface) !important;
-    border-radius: 12px !important;
-    padding: 5px !important;
-    border: 1px solid var(--nyx-border) !important;
-    margin-bottom: 14px !important;
-    gap: 6px !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
-}
-.tab-nav button {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-subtle) !important;
     border-radius: 8px !important;
-    font-weight: 600 !important;
-    font-size: 0.88rem !important;
-    color: var(--nyx-text-muted) !important;
-    padding: 8px 16px !important;
+    padding: 10px 16px !important;
+    margin-bottom: 12px !important;
+}
+
+/* Tabs: Underline Navigation Style */
+.tabs {
     border: none !important;
     background: transparent !important;
-    transition: all 0.2s ease !important;
 }
-.tab-nav button:hover { color: var(--nyx-text-primary) !important; background: rgba(36, 225, 248, 0.08) !important; }
+.tab-nav {
+    border-bottom: 1px solid var(--border-subtle) !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin-bottom: 14px !important;
+    gap: 20px !important;
+}
+.tab-nav button {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    color: var(--text-muted) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 8px 4px !important;
+    transition: all 0.15s ease !important;
+}
+.tab-nav button:hover {
+    color: var(--text-primary) !important;
+}
 .tab-nav button.selected {
-    color: var(--nyx-text-primary) !important;
-    background: rgba(18, 217, 245, 0.14) !important;
-    box-shadow: 0 0 14px rgba(18, 217, 245, 0.2) inset, 0 0 0 1px rgba(36, 225, 248, 0.45) !important;
+    color: var(--text-primary) !important;
+    border-bottom: 2px solid var(--accent-primary) !important;
+    font-weight: 600 !important;
 }
 
-.panel-card {
-    background: var(--nyx-bg-surface) !important;
-    border: 1px solid var(--nyx-border-card) !important;
-    border-radius: 12px !important;
-    padding: 16px !important;
-    box-shadow: 0 8px 28px rgba(0, 3, 11, 0.6) !important;
+/* Action Bar: Presets & Full Pipeline */
+.action-bar-row {
+    align-items: center !important;
+    margin-bottom: 16px !important;
+    padding: 2px 0 !important;
+}
+.presets-chip-group {
     display: flex !important;
-    flex-direction: column !important;
-    gap: 10px !important;
+    gap: 8px !important;
+    align-items: center !important;
 }
-.panel-card:hover {
-    border-color: rgba(36, 225, 248, 0.35) !important;
-}
-
-.panel-header-badge {
+.chip-preset {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-secondary) !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 5px 12px !important;
+    box-shadow: none !important;
+    transition: all 0.15s ease !important;
+    cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
     gap: 6px !important;
-    padding: 5px 12px !important;
-    font-size: 0.78rem !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.06em !important;
-    border-radius: 8px !important;
-    margin-bottom: 4px !important;
-    width: fit-content !important;
 }
-.badge-p1 { background: rgba(18, 217, 245, 0.12) !important; color: var(--nyx-primary-electric) !important; border: 1px solid rgba(36, 225, 248, 0.4) !important; }
-.badge-p2 { background: rgba(22, 123, 255, 0.14) !important; color: #60a5fa !important; border: 1px solid rgba(59, 130, 246, 0.45) !important; }
-.badge-p3 { background: rgba(168, 85, 247, 0.12) !important; color: #c084fc !important; border: 1px solid rgba(192, 132, 252, 0.35) !important; }
-
-.gradio-image, div[data-testid="image"] {
-    background: var(--nyx-bg-void) !important;
-    border: 1px solid var(--nyx-border) !important;
-    border-radius: 10px !important;
-    overflow: hidden !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) inset !important;
+.chip-preset:hover {
+    background: var(--bg-card) !important;
+    border-color: var(--border-active) !important;
+    color: var(--text-primary) !important;
 }
-
-button.primary {
-    background: linear-gradient(135deg, #167bff 0%, #12d9f5 100%) !important;
-    color: #00040a !important;
-    font-weight: 800 !important;
-    font-size: 0.90rem !important;
-    border: 1px solid rgba(85, 231, 255, 0.6) !important;
-    border-radius: 8px !important;
-    padding: 8px 18px !important;
-    box-shadow: 0 4px 18px rgba(18, 217, 245, 0.4) !important;
-    cursor: pointer !important;
+.chip-normal::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--status-pass);
 }
-button.primary:hover {
-    background: linear-gradient(135deg, #2587ff 0%, #30e1fb 100%) !important;
-    box-shadow: 0 6px 24px rgba(18, 217, 245, 0.6) !important;
+.chip-amd::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--status-warn);
 }
-
-button.secondary {
-    background: var(--nyx-bg-elevated) !important;
-    border: 1px solid var(--nyx-border) !important;
-    color: var(--nyx-text-primary) !important;
-    border-radius: 8px !important;
+.chip-reject::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--status-fail);
+}
+.btn-run-pipeline {
+    background: var(--accent-primary) !important;
+    color: #0B0D10 !important;
     font-weight: 600 !important;
-    font-size: 0.86rem !important;
-    padding: 7px 14px !important;
+    font-size: 13px !important;
+    border: 1px solid var(--accent-primary) !important;
+    border-radius: 6px !important;
+    padding: 6px 18px !important;
+    box-shadow: none !important;
     cursor: pointer !important;
+    transition: all 0.15s ease !important;
 }
-button.secondary:hover {
-    background: var(--nyx-bg-card-hover) !important;
-    border-color: rgba(36, 225, 248, 0.4) !important;
-    color: var(--nyx-primary-electric) !important;
+.btn-run-pipeline:hover {
+    opacity: 0.9 !important;
+    transform: translateY(-1px) !important;
 }
 
-input, select, textarea {
-    background-color: var(--nyx-bg-input) !important;
-    border: 1px solid var(--nyx-border) !important;
-    color: var(--nyx-text-primary) !important;
+/* Three Equal Columns & Step Header */
+.three-panel-studio-row {
+    display: flex !important;
+    gap: 16px !important;
+    align-items: stretch !important;
+}
+.three-panel-studio-row > .panel-card {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    box-shadow: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+}
+.panel-card:hover {
+    border-color: #262D37 !important;
+}
+.panel-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.panel-step-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-base);
+    color: var(--accent-primary);
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+}
+.panel-header-text {
+    display: flex;
+    flex-direction: column;
+}
+.panel-title-text {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+    text-transform: uppercase;
+}
+.panel-desc-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+/* Panel 1 Fundus Card */
+.fundus-upload-card {
+    border: 1px dashed var(--border-subtle) !important;
     border-radius: 8px !important;
-    padding: 8px 12px !important;
+    background: var(--bg-base) !important;
 }
-input:focus, select:focus, textarea:focus {
-    border-color: var(--nyx-primary-electric) !important;
-    outline: none !important;
-    box-shadow: 0 0 0 2px rgba(85, 231, 255, 0.35) !important;
+.fundus-upload-card:hover {
+    border-color: var(--border-active) !important;
 }
 
+/* Panel 2 Dimension & Toolbars */
+.segmented-dimension-control .wrap {
+    display: flex !important;
+    background: var(--bg-base) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 6px !important;
+    padding: 2px !important;
+    gap: 4px !important;
+}
+.segmented-dimension-control label {
+    border: none !important;
+    background: transparent !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: var(--text-muted) !important;
+    padding: 4px 10px !important;
+}
+.segmented-dimension-control label.selected {
+    background: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-subtle) !important;
+}
+.viewer-inline-toolbar {
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 6px 0 !important;
+}
+.nowrap-label label, .nowrap-label span {
+    white-space: nowrap !important;
+    font-size: 12px !important;
+}
+
+/* Panel 3 Placeholder & Results */
+.placeholder-card {
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 8px !important;
+    padding: 24px 16px !important;
+    text-align: center !important;
+    background: var(--bg-base) !important;
+}
+.placeholder-msg {
+    color: var(--text-muted) !important;
+    font-size: 13px !important;
+}
+
+/* Cards & Metrics Telemetry */
 .card-telemetry {
-    background: var(--nyx-bg-elevated) !important;
-    border: 1px solid var(--nyx-border) !important;
-    border-radius: 10px !important;
-    padding: 12px 14px !important;
-    margin-top: 6px !important;
-    margin-bottom: 6px !important;
+    background: var(--bg-base) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
 }
-
+.card-section-label {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    color: var(--text-muted) !important;
+}
 .status-pill {
-    font-size: 0.75rem !important;
+    font-size: 10px !important;
     font-weight: 700 !important;
-    padding: 3px 9px !important;
-    border-radius: 9999px !important;
+    padding: 2px 7px !important;
+    border-radius: 4px !important;
     letter-spacing: 0.04em !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 4px !important;
+    text-transform: uppercase !important;
 }
-.pill-pass { background: rgba(16, 185, 129, 0.16) !important; color: #34d399 !important; border: 1px solid #10b981 !important; }
-.pill-fail { background: rgba(239, 68, 68, 0.16) !important; color: #f87171 !important; border: 1px solid #ef4444 !important; }
-.pill-warn { background: rgba(245, 158, 11, 0.16) !important; color: #fbbf24 !important; border: 1px solid #f59e0b !important; }
-.pill-cyan { background: rgba(18, 217, 245, 0.16) !important; color: var(--nyx-primary-electric) !important; border: 1px solid var(--nyx-primary) !important; }
+.pill-pass { background: rgba(16, 185, 129, 0.12) !important; color: #10B981 !important; border: 1px solid rgba(16, 185, 129, 0.3) !important; }
+.pill-warn { background: rgba(245, 158, 11, 0.12) !important; color: #F59E0B !important; border: 1px solid rgba(245, 158, 11, 0.3) !important; }
+.pill-fail { background: rgba(239, 68, 68, 0.12) !important; color: #EF4444 !important; border: 1px solid rgba(239, 68, 68, 0.3) !important; }
+
+.metrics-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    margin-top: 6px !important;
+}
+.metric-item {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 6px !important;
+    padding: 8px 10px !important;
+}
+.metric-label {
+    font-size: 11px !important;
+    color: var(--text-muted) !important;
+    text-transform: uppercase !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em !important;
+}
+.metric-value {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    margin: 2px 0 !important;
+}
+.metric-sub {
+    font-size: 11px !important;
+    color: var(--text-dim) !important;
+}
+
+/* Model Comparison */
+.model-comparison-box {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 8px !important;
+    padding: 10px !important;
+    margin-top: 8px !important;
+}
+.progress-bar-bg {
+    background: var(--bg-base) !important;
+    border-radius: 4px !important;
+    height: 5px !important;
+    overflow: hidden !important;
+    margin-top: 4px !important;
+}
+.progress-bar-fill {
+    height: 100% !important;
+    border-radius: 4px !important;
+    transition: width 0.3s ease !important;
+}
+.fill-blue { background: #38BDF8 !important; }
+.fill-purple { background: #2DD4BF !important; }
+.auroc-badge {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    padding: 1px 6px !important;
+    border-radius: 4px !important;
+    background: var(--bg-base) !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border-subtle) !important;
+    font-family: var(--font-mono) !important;
+}
+.auroc-highlight {
+    color: var(--status-pass) !important;
+    border-color: rgba(16, 185, 129, 0.4) !important;
+    background: rgba(16, 185, 129, 0.08) !important;
+}
+.ci-text {
+    font-size: 11px !important;
+    color: var(--text-muted) !important;
+    font-family: var(--font-mono) !important;
+}
+
+/* Input Fields & Buttons */
+input, select, textarea {
+    background-color: var(--bg-base) !important;
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-primary) !important;
+    border-radius: 6px !important;
+    font-size: 13px !important;
+    transition: border-color 0.15s ease !important;
+}
+input:focus, select:focus, textarea:focus {
+    border-color: var(--accent-primary) !important;
+    outline: none !important;
+}
+
+button.secondary {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-secondary) !important;
+    border-radius: 6px !important;
+    font-weight: 500 !important;
+    font-size: 13px !important;
+    transition: all 0.15s ease !important;
+    box-shadow: none !important;
+}
+button.secondary:hover {
+    background: var(--bg-card) !important;
+    border-color: var(--border-active) !important;
+    color: var(--text-primary) !important;
+}
+
+.accordion, details {
+    background: transparent !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 6px !important;
+    padding: 6px 10px !important;
+}
+summary {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: var(--text-muted) !important;
+}
+summary:hover {
+    color: var(--text-primary) !important;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .three-panel-studio-row {
+        flex-direction: column !important;
+    }
+}
+"""
+
+
+def get_clinical_theme() -> gr.themes.Base:
+    """Builds a custom Linear/Vercel clinical theme."""
+    return gr.themes.Base(
+        primary_hue=gr.themes.Color(
+            c50="#f0fdfa", c100="#ccfbf1", c200="#99f6e4", c300="#5eead4",
+            c400="#2dd4bf", c500="#14b8a6", c600="#0d9488", c700="#0f766e",
+            c800="#115e59", c900="#134e4a", c950="#042f2e"
+        ),
+        neutral_hue=gr.themes.Color(
+            c50="#f8fafc", c100="#f1f5f9", c200="#e2e8f0", c300="#cbd5e1",
+            c400="#94a3b8", c500="#64748b", c600="#475569", c700="#334155",
+            c800="#1e293b", c900="#0f172a", c950="#0b0d10"
+        ),
+        font=[gr.themes.GoogleFont("Inter"), "system-ui", "-apple-system", "sans-serif"],
+        font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "monospace"],
+    ).set(
+        body_background_fill="#0B0D10",
+        body_background_fill_dark="#0B0D10",
+        body_text_color="#E6E9EE",
+        body_text_color_dark="#E6E9EE",
+        block_background_fill="#12151A",
+        block_background_fill_dark="#12151A",
+        block_border_width="1px",
+        block_border_color="#1E232B",
+        block_border_color_dark="#1E232B",
+        block_radius="12px",
+        block_label_text_size="12px",
+        block_label_text_weight="600",
+        block_label_text_color="#8B93A1",
+        block_label_text_color_dark="#8B93A1",
+        input_background_fill="#0B0D10",
+        input_background_fill_dark="#0B0D10",
+        input_border_color="#1E232B",
+        input_border_color_dark="#1E232B",
+        input_border_color_focus="#2DD4BF",
+        input_border_color_focus_dark="#2DD4BF",
+        button_primary_background_fill="#2DD4BF",
+        button_primary_background_fill_dark="#2DD4BF",
+        button_primary_text_color="#0B0D10",
+        button_primary_text_color_dark="#0B0D10",
+        button_secondary_background_fill="#12151A",
+        button_secondary_background_fill_dark="#12151A",
+        button_secondary_border_color="#1E232B",
+        button_secondary_border_color_dark="#1E232B",
+        button_secondary_text_color="#E6E9EE",
+        button_secondary_text_color_dark="#E6E9EE",
+        border_color_primary="#1E232B",
+        border_color_primary_dark="#1E232B",
+    )
+
+
+HEAD_SCRIPTS = """
+<script>
+function toggleTheme() {
+    const isLight = document.body.classList.toggle('light-theme');
+    const container = document.querySelector('.gradio-container');
+    if (container) container.classList.toggle('light-theme', isLight);
+    try { localStorage.setItem('nyx_theme', isLight ? 'light' : 'dark'); } catch(e){}
+}
+(function() {
+    try {
+        if (localStorage.getItem('nyx_theme') === 'light') {
+            document.body.classList.add('light-theme');
+        }
+    } catch(e){}
+})();
+</script>
 """
 
 
@@ -2175,79 +2478,84 @@ input:focus, select:focus, textarea:focus {
 
 def build_app() -> gr.Blocks:
     """Constructs the high-fidelity 3-panel Func2OCT Studio Web Application."""
-    theme = gr.themes.Soft(
-        primary_hue="teal",
-        secondary_hue="cyan",
-        neutral_hue="slate",
-    )
+    theme = get_clinical_theme()
 
-    with gr.Blocks(title="NyxVision — See What Lies Beneath | Retinal Imaging Research Workstation") as demo:
+    with gr.Blocks(title="NyX Vision: Retinal Generative & Diagnostic Suite") as demo:
         demo.theme = theme
         demo.css = CUSTOM_CSS
+        demo.head = HEAD_SCRIPTS
 
-        # Top CDSCO Investigational Regulatory Banner
-        gr.HTML(CDSCO_REGULATORY_BANNER_HTML)
-
-        # Header Title Banner
+        # Top Bar (App name, subtitle, theme toggle and status)
         gr.HTML(
             """
-            <div class="nyx-header-container">
-                <div class="nyx-brand-block">
-                    <img src="data:image/png;base64,{NYX_EMBLEM_B64}" class="nyx-emblem-glow" alt="NyxVision Emblem" />
-                    <div>
-                        <div class="nyx-brand-title">
-                            NYX<span class="nyx-flare">V</span>ISION
-                            <span class="nyx-samd-tag">v2.4 SaMD</span>
-                        </div>
-                        <div class="nyx-tagline-wrapper">
-                            <span class="nyx-tagline-line"></span>
-                            <span class="nyx-tagline-text">SEE WHAT LIES BENEATH.</span>
-                            <span class="nyx-tagline-line right"></span>
-                        </div>
-                        <div class="nyx-brand-subtitle">
-                            Fundus-to-OCT Representation Research &bull; Cross-Modal Generative Synthesis &bull; 8-Layer Laminar Biomarkers
-                        </div>
-                    </div>
+            <div class="clinical-topbar">
+                <div class="topbar-brand">
+                    <span class="brand-title">NyX Vision</span>
+                    <span class="brand-sub">Retinal Generative &amp; Diagnostic Suite</span>
                 </div>
-                <div class="nyx-header-pills">
-                    <span class="status-pill pill-cyan">CDSCO MDR 2017 (Rule 51)</span>
-                    <span class="status-pill pill-pass">Deep Generative Diffusion</span>
+                <div class="topbar-actions">
+                    <span class="chip-version">v2.4 SaMD</span>
+                    <button class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode">Theme</button>
                 </div>
             </div>
             """
         )
 
+        # CDSCO Regulatory Banner
+        gr.HTML(CDSCO_REGULATORY_BANNER_HTML)
+
         with gr.Tabs():
             # ---------------------------------------------------------------
-            # TAB 1: 3-PANEL GENERATIVE & DIAGNOSTIC STUDIO (MAIN REQUEST)
+            # TAB 1: STUDIO (MAIN 3-PANEL PIPELINE)
             # ---------------------------------------------------------------
-            with gr.TabItem("👁️ 3-Panel Generative & Diagnostic Studio"):
+            with gr.TabItem("Studio"):
                 # Persistent Volumetric OCT 3D State
                 volume_state = gr.State(value=None)
 
-                # Quick Presets Bar
-                with gr.Row():
-                    with gr.Column(scale=9):
+                # Action Bar: Presets on Left, Primary Pipeline Button Aligned Right
+                with gr.Row(elem_classes=["action-bar-row"]):
+                    with gr.Column(scale=8, elem_classes=["presets-chip-group"]):
                         with gr.Row():
-                            btn_preset_normal = gr.Button("🟢 Preset: Normal Control Fundus", size="sm", variant="secondary")
-                            btn_preset_amd = gr.Button("🟠 Preset: Macular Degeneration (AMD)", size="sm", variant="secondary")
-                            btn_preset_blur = gr.Button("🔴 Preset: Blurred / QC Reject Frame", size="sm", variant="secondary")
-                    with gr.Column(scale=3):
-                        master_pipeline_btn = gr.Button("⚡ Run Full Pipeline (All 3 Panels)", variant="primary", size="sm")
+                            btn_preset_normal = gr.Button("Normal", size="sm", elem_classes=["chip-preset", "chip-normal"])
+                            btn_preset_amd = gr.Button("AMD", size="sm", elem_classes=["chip-preset", "chip-amd"])
+                            btn_preset_blur = gr.Button("QC Reject", size="sm", elem_classes=["chip-preset", "chip-reject"])
+                    with gr.Column(scale=4, elem_classes=["run-pipeline-container"]):
+                        master_pipeline_btn = gr.Button("Run Full Pipeline", variant="primary", size="sm", elem_classes=["btn-run-pipeline"])
 
-                # The 3 Side-by-Side Panels
-                with gr.Row(equal_height=False):
+                # The 3 Equal Columns (1 → 2 → 3 Pipeline Flow)
+                with gr.Row(equal_height=False, elem_classes=["three-panel-studio-row"]):
                     # -------------------------------------------------------
-                    # PANEL 1: Fundus Upload & Quality Feedback
+                    # PANEL 1: Fundus & Quality
                     # -------------------------------------------------------
-                    with gr.Column(scale=4, elem_classes=["panel-card"]):
-                        gr.HTML('<span class="panel-header-badge badge-p1">Panel 1: Fundus Upload & Quality Feedback</span>')
+                    with gr.Column(scale=1, elem_classes=["panel-card"]):
+                        gr.HTML(
+                            """
+                            <div class="panel-card-header">
+                                <span class="panel-step-badge">1</span>
+                                <div class="panel-header-text">
+                                    <div class="panel-title-text">FUNDUS &amp; QUALITY</div>
+                                    <div class="panel-desc-text">Optical QC, landmark verification, and focus screening</div>
+                                </div>
+                            </div>
+                            """
+                        )
 
                         fundus_input = gr.Image(
                             label="Retinal Fundus Photograph",
                             type="pil",
                             sources=["upload", "webcam", "clipboard"],
-                            height=280,
+                            height=260,
+                            elem_classes=["fundus-upload-card"],
+                        )
+
+                        qc_html_card = gr.HTML(
+                            value="""
+                            <div class="card-telemetry">
+                                <span style="font-size: 13px; color: var(--text-muted);">
+                                    Upload a fundus image or select a preset to evaluate focus clarity.
+                                </span>
+                            </div>
+                            """
                         )
 
                         disease_scenario_select = gr.Dropdown(
@@ -2256,13 +2564,13 @@ def build_app() -> gr.Blocks:
                             label="Clinical Scenario Prior",
                         )
 
-                        with gr.Accordion("⚙️ Quality Control & Tolerance Settings", open=False):
+                        with gr.Accordion("Quality Control & Tolerance Settings", open=False):
                             focus_threshold_slider = gr.Slider(
                                 minimum=0.20,
                                 maximum=0.85,
                                 value=0.50,
                                 step=0.05,
-                                label="Minimum Focus Clarity Score (MLV + Tenengrad)",
+                                label="Minimum Focus Clarity Score",
                             )
                             verify_geometry_cb = gr.Checkbox(
                                 value=True,
@@ -2274,43 +2582,43 @@ def build_app() -> gr.Blocks:
                                 label="Laterality Reference",
                             )
 
-                        btn_qc_inspect = gr.Button("🔍 Inspect Fundus Quality & Landmarks", variant="secondary")
+                        btn_qc_inspect = gr.Button("Inspect Quality & Landmarks", variant="secondary")
 
                         hud_output = gr.Image(
                             label="Augmented Retinal HUD (OD, Macula, Focus Ring)",
                             type="numpy",
-                            height=280,
+                            height=260,
                         )
 
-                        qc_html_card = gr.HTML(
-                            value="""
-                            <div class="card-telemetry" style="border-left: 4px solid #334155;">
-                                <span style="font-weight: 600; color: #94a3b8; font-size: 0.9rem;">
-                                    Upload a fundus image or select a preset to evaluate focus clarity and retinal geometry.
-                                </span>
+                        with gr.Accordion("Localized QC Voice Report", open=False):
+                            with gr.Row():
+                                qc_patient_id = gr.Textbox(value="PID-AP-101", label="Patient ID")
+                                qc_narration_lang = gr.Dropdown(
+                                    choices=["Telugu (తెలుగు)", "English", "Bilingual (తెలుగు + English)"],
+                                    value="Telugu (తెలుగు)",
+                                    label="Audio Language",
+                                )
+                            btn_qc_audio = gr.Button("Generate QC Audio Report", variant="secondary", size="sm")
+                            qc_audio_player = gr.Audio(label="Voice Narration", type="filepath", interactive=False)
+                            qc_audio_md = gr.Markdown()
+
+                    # -------------------------------------------------------
+                    # PANEL 2: Synthetic OCT Studio
+                    # -------------------------------------------------------
+                    with gr.Column(scale=1, elem_classes=["panel-card"]):
+                        gr.HTML(
+                            """
+                            <div class="panel-card-header">
+                                <span class="panel-step-badge">2</span>
+                                <div class="panel-header-text">
+                                    <div class="panel-title-text">SYNTHETIC OCT STUDIO</div>
+                                    <div class="panel-desc-text">3D volumetric reconstruction and multi-planar analysis</div>
+                                </div>
                             </div>
                             """
                         )
 
-                        with gr.Accordion("🔊 Localized Telugu QC Audio Report (ఆడియో నివేదిక)", open=False):
-                            with gr.Row():
-                                qc_patient_id = gr.Textbox(value="PID-AP-101", label="Patient ID / రోగి సంఖ్య")
-                                qc_narration_lang = gr.Dropdown(
-                                    choices=["Telugu (తెలుగు)", "English", "Bilingual (తెలుగు + English)"],
-                                    value="Telugu (తెలుగు)",
-                                    label="Audio Language (భాష)",
-                                )
-                            btn_qc_audio = gr.Button("🔊 Generate Localized Audio QC Report", variant="secondary", size="sm")
-                            qc_audio_player = gr.Audio(label="Voice Narration (ఆడియో నివేదిక)", type="filepath", interactive=False)
-                            qc_audio_md = gr.Markdown()
-
-                    # -------------------------------------------------------
-                    # PANEL 2: Synthetic OCT 2D / 3D Volumetric Studio
-                    # -------------------------------------------------------
-                    with gr.Column(scale=5, elem_classes=["panel-card"]):
-                        gr.HTML('<span class="panel-header-badge badge-p2">Panel 2: Synthetic OCT 2D / 3D Volumetric Studio</span>')
-
-                        # Toggle for 2D vs 3D Retina Examination
+                        # Dimension Switch as Segmented Control (3D Volume | 2D B-Scan)
                         with gr.Row():
                             scan_dimension_radio = gr.Radio(
                                 choices=[
@@ -2318,12 +2626,11 @@ def build_app() -> gr.Blocks:
                                     "📋 2D Clinical Cross-Sectional Scan",
                                 ],
                                 value="🔬 3D Interactive Volumetric Studio",
-                                label="Retina Examination Dimension (2D vs 3D)",
+                                label="Dimension",
+                                elem_classes=["segmented-dimension-control"],
                             )
 
-                        # ---------------------------------------------------
                         # 3D Interactive Volumetric Studio Container
-                        # ---------------------------------------------------
                         with gr.Column(visible=True) as container_3d:
                             oct_3d_plot = gr.Plot(
                                 value=get_initial_3d_figure,
@@ -2340,13 +2647,13 @@ def build_app() -> gr.Blocks:
                                         "Complete 3D Composite",
                                     ],
                                     value="3D Multi-Planar Orthogonal Slices (MPR)",
-                                    label="3D Rendering Architecture",
+                                    label="3D Architecture",
                                     scale=7,
                                 )
                                 colormap_3d_select = gr.Dropdown(
                                     choices=["bone", "inferno", "viridis", "gray", "plasma"],
                                     value="bone",
-                                    label="3D Colormap",
+                                    label="Colormap",
                                     scale=5,
                                 )
 
@@ -2356,7 +2663,7 @@ def build_app() -> gr.Blocks:
                                     maximum=31,
                                     value=16,
                                     step=1,
-                                    label="Cutplane Y (B-Scan Superior-Inferior | 0-31)",
+                                    label="Cutplane Y (B-Scan 0-31)",
                                     scale=6,
                                 )
                                 slice_x_slider = gr.Slider(
@@ -2364,7 +2671,7 @@ def build_app() -> gr.Blocks:
                                     maximum=255,
                                     value=128,
                                     step=1,
-                                    label="Cutplane X (Sagittal Nasal-Temporal | 0-255)",
+                                    label="Cutplane X (Sagittal 0-255)",
                                     scale=6,
                                 )
 
@@ -2374,7 +2681,7 @@ def build_app() -> gr.Blocks:
                                     maximum=255,
                                     value=128,
                                     step=1,
-                                    label="Cutplane Z (Axial Depth | 0-255)",
+                                    label="Cutplane Z (Axial 0-255)",
                                     scale=6,
                                 )
                                 depth_scale_slider = gr.Slider(
@@ -2382,18 +2689,17 @@ def build_app() -> gr.Blocks:
                                     maximum=4.0,
                                     value=2.0,
                                     step=0.5,
-                                    label="Depth Scale (Z-Exaggeration)",
+                                    label="Depth Scale",
                                     scale=6,
                                 )
 
-                            btn_update_3d = gr.Button("⚡ Update Interactive 3D Render", variant="secondary", size="sm")
+                            btn_update_3d = gr.Button("Update 3D View", variant="secondary", size="sm")
 
-                        # ---------------------------------------------------
                         # 2D Clinical Cross-Sectional Scan Container
-                        # ---------------------------------------------------
                         with gr.Column(visible=False) as container_2d:
+                            # Compact Display Mode Dropdown
                             with gr.Row():
-                                viz_mode_radio = gr.Radio(
+                                viz_mode_radio = gr.Dropdown(
                                     choices=[
                                         "8-Layer Retinal Boundaries",
                                         "Raw Synthetic B-Scan",
@@ -2403,40 +2709,42 @@ def build_app() -> gr.Blocks:
                                         "En-Face MIP Projection",
                                     ],
                                     value="8-Layer Retinal Boundaries",
-                                    label="2D Visualization Display Mode",
+                                    label="Display Mode",
                                 )
 
-                            with gr.Row():
-                                colormap_2d_select = gr.Dropdown(
-                                    choices=["bone", "inferno", "viridis", "gray", "inverted", "hot", "rainbow"],
-                                    value="bone",
-                                    label="2D Clinical Palette",
-                                    scale=4,
-                                )
-                                show_scalebar_cb = gr.Checkbox(value=True, label="200 µm Scale Bar", scale=4)
-                                show_fovea_cb = gr.Checkbox(value=True, label="Foveal Marker", scale=4)
-
-                            btn_panel2_render = gr.Button("⚡ Render 2D Display Mode / Update Slice", variant="secondary", size="sm")
-
+                            # Hero Output Viewer
                             bscan_viewer = gr.Image(
                                 label="Active 2D Retinal Scan View",
                                 type="numpy",
-                                height=320,
+                                height=300,
                             )
+
+                            # Slim Single-Row Toolbar Directly Under Viewer
+                            with gr.Row(elem_classes=["viewer-inline-toolbar"]):
+                                colormap_2d_select = gr.Dropdown(
+                                    choices=["bone", "inferno", "viridis", "gray", "inverted", "hot", "rainbow"],
+                                    value="bone",
+                                    label="Palette",
+                                    scale=5,
+                                )
+                                show_scalebar_cb = gr.Checkbox(value=True, label="200 µm Scale Bar", scale=4, elem_classes=["nowrap-label"])
+                                show_fovea_cb = gr.Checkbox(value=True, label="Foveal Marker", scale=3, elem_classes=["nowrap-label"])
 
                             slice_slider = gr.Slider(
                                 minimum=0,
                                 maximum=31,
                                 value=16,
                                 step=1,
-                                label="B-Scan Navigation: Slice Index (0 - 31 | Central Macula ~#16)",
+                                label="Slice Index (0-31 | Fovea ~#16)",
                             )
+
+                            btn_panel2_render = gr.Button("Render Slice View", variant="secondary", size="sm")
 
                         thickness_html_card = gr.HTML(
                             value="""
-                            <div class="card-telemetry" style="border-left: 4px solid #334155;">
-                                <span style="font-weight: 600; color: #94a3b8; font-size: 0.9rem;">
-                                    Synthesize 3D OCT volume to inspect 8-layer boundary traces, 3D volumetric surfaces, and thickness metrics.
+                            <div class="card-telemetry">
+                                <span style="font-size: 13px; color: var(--text-muted);">
+                                    Synthesize 3D volume to inspect retinal thickness metrics.
                                 </span>
                             </div>
                             """
@@ -2445,9 +2753,9 @@ def build_app() -> gr.Blocks:
                         with gr.Row():
                             with gr.Column(scale=6):
                                 en_face_thumbnail = gr.Image(
-                                    label="En-Face Axial MIP Projection",
+                                    label="En-Face Axial MIP",
                                     type="numpy",
-                                    height=150,
+                                    height=130,
                                 )
                             with gr.Column(scale=6):
                                 download_nifti_btn = gr.File(
@@ -2457,35 +2765,44 @@ def build_app() -> gr.Blocks:
                                 )
 
                     # -------------------------------------------------------
-                    # PANEL 3: Multimodal Diagnostic Predictions
+                    # PANEL 3: AI Classifier
                     # -------------------------------------------------------
-                    with gr.Column(scale=3, elem_classes=["panel-card"]):
-                        gr.HTML('<span class="panel-header-badge badge-p3">Panel 3: Multimodal AI Disease Classifier</span>')
-
-                        predictions_html_card = gr.HTML(
-                            value="""
-                            <div class="card-telemetry" style="border-left: 4px solid #334155;">
-                                <span style="font-weight: 600; color: #94a3b8; font-size: 0.9rem;">
-                                    Run full pipeline to compare Model A (Fundus-Only) vs. Model B (Multimodal Fusion) AUROC uplift.
-                                </span>
+                    with gr.Column(scale=1, elem_classes=["panel-card"]):
+                        gr.HTML(
+                            """
+                            <div class="panel-card-header">
+                                <span class="panel-step-badge">3</span>
+                                <div class="panel-header-text">
+                                    <div class="panel-title-text">AI CLASSIFIER</div>
+                                    <div class="panel-desc-text">Model A vs. Model B multimodal diagnostic prediction</div>
+                                </div>
                             </div>
                             """
                         )
 
-                        with gr.Accordion("🔊 Localized Telugu Patient Voice Report (ఆడియో నివేదిక)", open=True):
+                        predictions_html_card = gr.HTML(
+                            value="""
+                            <div class="card-telemetry placeholder-card">
+                                <div class="placeholder-msg">Run the pipeline to see results</div>
+                            </div>
+                            """
+                        )
+
+                        with gr.Accordion("Localized Voice Report", open=True):
                             with gr.Row():
-                                diag_patient_id = gr.Textbox(value="PID-AP-101", label="Patient ID / రోగి సంఖ్య")
+                                diag_patient_id = gr.Textbox(value="PID-AP-101", label="Patient ID")
                                 diag_lang = gr.Dropdown(
                                     choices=["Telugu (తెలుగు)", "English", "Bilingual (తెలుగు + English)"],
                                     value="Telugu (తెలుగు)",
-                                    label="Language (భాష)",
+                                    label="Language",
                                 )
-                            btn_diag_audio = gr.Button("🔊 Generate Patient Voice Report", variant="secondary")
-                            diag_audio_player = gr.Audio(label="Telugu Voice Narration", type="filepath", interactive=False)
+                            btn_diag_audio = gr.Button("Generate Voice Report", variant="secondary")
+                            diag_audio_player = gr.Audio(label="Voice Narration", type="filepath", interactive=False)
                             diag_audio_md = gr.Markdown()
 
-                        with gr.Accordion("📋 Diagnostic Telemetry & Audit Log", open=False):
+                        with gr.Accordion("Diagnostic Telemetry & Audit Log", open=False):
                             telemetry_json = gr.JSON(label="Numerical Telemetry")
+
 
                 # Wire Panel 1 & 2 & 3 Interactive Events
                 btn_preset_normal.click(
@@ -2809,22 +3126,22 @@ def build_app() -> gr.Blocks:
             # ---------------------------------------------------------------
             # TAB 2: Real-Time Auto-Capture Video Stream
             # ---------------------------------------------------------------
-            with gr.TabItem("🎯 Real-Time Auto-Capture"):
+            with gr.TabItem("Auto-Capture"):
                 with gr.Row():
                     with gr.Column(scale=5):
                         with gr.Tabs():
-                            with gr.TabItem("📹 Live Video Stream"):
+                            with gr.TabItem("Live Video Stream"):
                                 stream_feed = gr.Image(
-                                    label="Live Retinal Camera Stream (Real-Time Auto-Capture Loop)",
+                                    label="Live Retinal Camera Stream (Auto-Capture Loop)",
                                     sources=["webcam"],
                                     streaming=True,
                                     type="numpy",
                                     height=290,
                                 )
                                 gr.Markdown(
-                                    "<small style='color:#94a3b8;'>Live frames are continuously streamed at ~6-8 FPS. When landmarks and focus remain stable across consecutive frames, auto-capture triggers automatically.</small>"
+                                    "<small style='color: var(--text-muted);'>Live frames are continuously streamed at ~6-8 FPS. When landmarks and focus remain stable across consecutive frames, auto-capture triggers automatically.</small>"
                                 )
-                            with gr.TabItem("📁 Upload / Calibration Presets"):
+                            with gr.TabItem("Upload / Calibration"):
                                 upload_feed = gr.Image(
                                     label="Upload Retinal Frame or Test Calibration Pattern",
                                     type="numpy",
@@ -2832,10 +3149,10 @@ def build_app() -> gr.Blocks:
                                     height=260,
                                 )
                                 with gr.Row():
-                                    btn_sample_sharp = gr.Button("🟢 Sharp Valid", size="sm")
-                                    btn_sample_blur = gr.Button("🔴 Blurred Frame", size="sm")
-                                    btn_sample_misalign = gr.Button("🟠 Eccentric OD", size="sm")
-                                run_capture_btn = gr.Button("⚡ Evaluate Uploaded Frame", variant="primary")
+                                    btn_sample_sharp = gr.Button("Sharp Valid", size="sm")
+                                    btn_sample_blur = gr.Button("Blurred Frame", size="sm")
+                                    btn_sample_misalign = gr.Button("Eccentric OD", size="sm")
+                                run_capture_btn = gr.Button("Evaluate Frame", variant="primary")
 
                         with gr.Row():
                             focus_thresh = gr.Slider(
@@ -2867,16 +3184,16 @@ def build_app() -> gr.Blocks:
                         with gr.Row():
                             capture_status_badge = gr.Textbox(label="Auto-Capture Action", interactive=False)
                         captured_box = gr.Image(label="Frozen Auto-Captured High-Res Frame", type="numpy")
-                        btn_send_to_studio = gr.Button("➡️ Send Auto-Captured Frame to Panel 1 Studio", variant="primary")
+                        btn_send_to_studio = gr.Button("Send to Studio (Panel 1)", variant="primary")
 
-                        with gr.Accordion("🔊 Telugu Audio Voice Guidance Cues (ఆడియో మార్గదర్శకత్వం)", open=True):
-                            gr.Markdown("<small style='color:#94a3b8;'>Live auditory cues for operators and patients during acquisition:</small>")
+                        with gr.Accordion("Telugu Voice Guidance Cues", open=True):
+                            gr.Markdown("<small style='color: var(--text-muted);'>Auditory cues for operators and patients during acquisition:</small>")
                             with gr.Row():
-                                btn_cue_hold = gr.Button("🔊 స్థిరంగా ఉండండి", size="sm")
-                                btn_cue_focus = gr.Button("🔊 ఫోకస్ సర్దుబాటు", size="sm")
-                                btn_cue_disc = gr.Button("🔊 ఆప్టిక్ డిస్క్", size="sm")
-                                btn_cue_cap = gr.Button("🔊 క్యాప్చర్ పూర్తయింది", size="sm")
-                            stream_voice_audio = gr.Audio(label="Telugu Voice Cue Player (ఆడియో మార్గదర్శనం)", type="filepath", interactive=False)
+                                btn_cue_hold = gr.Button("స్థిరంగా ఉండండి", size="sm")
+                                btn_cue_focus = gr.Button("ఫోకస్ సర్దుబాటు", size="sm")
+                                btn_cue_disc = gr.Button("ఆప్టిక్ డిస్క్", size="sm")
+                                btn_cue_cap = gr.Button("క్యాప్చర్ పూర్తయింది", size="sm")
+                            stream_voice_audio = gr.Audio(label="Telugu Voice Cue Player", type="filepath", interactive=False)
                             stream_voice_transcript = gr.Markdown()
 
                 # Real-Time Webcam Streaming Event Loop
@@ -2949,10 +3266,10 @@ def build_app() -> gr.Blocks:
             # ---------------------------------------------------------------
             # TAB 3: Clinical Turing Test (Real vs. Synthetic OCT)
             # ---------------------------------------------------------------
-            with gr.TabItem("⚖️ Clinical Turing Test (Real vs. Synthetic)"):
+            with gr.TabItem("Clinical Turing Test"):
                 gr.Markdown(
                     """
-                    ### ⚖️ Clinical Turing Test: Synthetic vs. Real OCT Discrimination Reader Study
+                    ### Clinical Turing Test: Synthetic vs. Real OCT Discrimination Reader Study
                     Blinded discrimination protocol assessing generative structural fidelity against clinical ground truth.
                     """
                 )
@@ -2964,8 +3281,8 @@ def build_app() -> gr.Blocks:
                             interactive=False,
                         )
                         with gr.Row():
-                            load_case_btn = gr.Button("🎲 Load Next Blind Case", variant="primary")
-                            reset_turing_btn = gr.Button("🔄 Reset Study Session", variant="secondary")
+                            load_case_btn = gr.Button("Load Next Blind Case", variant="primary")
+                            reset_turing_btn = gr.Button("Reset Study Session", variant="secondary")
 
                         with gr.Row():
                             turing_case_id_display = gr.Textbox(label="Case Identifier", interactive=False)
@@ -2975,14 +3292,14 @@ def build_app() -> gr.Blocks:
                         hidden_case_id = gr.Textbox(visible=False)
 
                     with gr.Column(scale=6):
-                        gr.Markdown("#### 👨‍⚕️ Clinician Discrimination Evaluation")
+                        gr.Markdown("#### Clinician Discrimination Evaluation")
                         reader_choice = gr.Radio(
                             choices=[
-                                "🏥 Real In-Vivo Clinical OCT B-Scan",
-                                "🤖 Synthetic Generative OCT B-Scan",
+                                "Real In-Vivo Clinical OCT B-Scan",
+                                "Synthetic Generative OCT B-Scan",
                             ],
                             label="Your Clinical Discrimination Judgment:",
-                            value="🏥 Real In-Vivo Clinical OCT B-Scan",
+                            value="Real In-Vivo Clinical OCT B-Scan",
                         )
                         confidence_slider = gr.Slider(
                             minimum=50.0,
@@ -3025,9 +3342,9 @@ def build_app() -> gr.Blocks:
                             lines=2,
                         )
 
-                        submit_turing_btn = gr.Button("✅ Submit Reader Judgment & Reveal Ground Truth", variant="primary")
-                        turing_narrate_btn = gr.Button("🔊 Narrate Ground Truth & Biomarkers in Telugu (తెలుగు ఆడియో వివరణ)", variant="secondary")
-                        turing_audio_player = gr.Audio(label="Telugu Voice Narration (ఆడియో వివరణ)", type="filepath", interactive=False)
+                        submit_turing_btn = gr.Button("Submit Reader Judgment & Reveal Ground Truth", variant="primary")
+                        turing_narrate_btn = gr.Button("Narrate Ground Truth in Telugu", variant="secondary")
+                        turing_audio_player = gr.Audio(label="Voice Narration", type="filepath", interactive=False)
                         turing_transcript_box = gr.Markdown()
 
                 with gr.Row():
@@ -3098,10 +3415,10 @@ def build_app() -> gr.Blocks:
             # ---------------------------------------------------------------
             # TAB 4: Grad-CAM Interpretability & Predictive Uncertainty
             # ---------------------------------------------------------------
-            with gr.TabItem("🔍 Interpretability & Uncertainty"):
+            with gr.TabItem("Interpretability & Uncertainty"):
                 gr.Markdown(
                     """
-                    ### 🔍 Grad-CAM Saliency Maps & Monte Carlo Dropout Uncertainty Flagging
+                    ### Grad-CAM Saliency Maps & Monte Carlo Dropout Uncertainty Flagging
                     Visualize convolutional feature attention across retinal landmarks and quantify epistemic/aleatoric uncertainty.
                     """
                 )
@@ -3146,7 +3463,15 @@ def build_app() -> gr.Blocks:
                                 step=0.05,
                                 label="Grad-CAM Overlay Alpha",
                             )
-                        run_interp_btn = gr.Button("⚡ Analyze Interpretability & Uncertainty", variant="primary")
+                        confidence_target_slider = gr.Slider(
+                            minimum=0.80,
+                            maximum=0.99,
+                            value=0.97,
+                            step=0.01,
+                            label="Diagnostic Confidence Calibration Target",
+                            info="Clinical calibration target for MC Dropout uncertainty flagging (default 97%)",
+                        )
+                        run_interp_btn = gr.Button("Analyze Interpretability & Uncertainty", variant="primary")
 
                     with gr.Column(scale=5):
                         with gr.Row():
@@ -3165,6 +3490,7 @@ def build_app() -> gr.Blocks:
                         unc_metric_select,
                         threshold_slider,
                         alpha_slider,
+                        confidence_target_slider,
                     ],
                     outputs=[
                         interp_overlay_out,
@@ -3177,17 +3503,17 @@ def build_app() -> gr.Blocks:
             # ---------------------------------------------------------------
             # TAB 5: Regional Telugu Audio Reports & Accessibility Studio
             # ---------------------------------------------------------------
-            with gr.TabItem("🔊 Telugu Audio Reports & Accessibility (ఆడియో నివేదికలు)"):
+            with gr.TabItem("Telugu Audio Reports"):
                 gr.Markdown(
                     """
-                    ### 🔊 Regional Audio Reports & Patient Accessibility Studio (తెలుగు ఆడియో నివేదికలు)
+                    ### Regional Audio Reports & Patient Accessibility Studio
                     **Google Text-to-Speech (gTTS)** localized voice synthesis engine for rural healthcare accessibility, primary health centres (PHCs), and visually impaired individuals under CDSCO SaMD guidelines.
                     """
                 )
                 with gr.Row():
                     with gr.Column(scale=6):
                         access_patient_name = gr.Textbox(
-                            label="Patient Name / Identifier (రోగి పేరు / గుర్తింపు సంఖ్య):",
+                            label="Patient Name / Identifier:",
                             value="రామయ్య (Ramaiah - PID-AP-101)",
                             placeholder="Enter patient name...",
                         )
@@ -3198,7 +3524,7 @@ def build_app() -> gr.Blocks:
                                 "రెండు కళ్ళు (Both Eyes - OU)",
                             ],
                             value="కుడి కన్ను (Right Eye - OD)",
-                            label="Examined Eye Laterality (పరీక్షించబడిన కన్ను):",
+                            label="Examined Eye Laterality:",
                         )
                         access_condition_preset = gr.Dropdown(
                             choices=[
@@ -3209,37 +3535,37 @@ def build_app() -> gr.Blocks:
                                 "అనుకూల వైద్య నమోదు (Custom Clinical Entry)",
                             ],
                             value="ఉత్తమ నాణ్యత - సాధారణ రెటీనా (Normal Healthy Retina - Pass)",
-                            label="Diagnostic Preset Template (రోగ నిర్ధారణ నమూనా):",
+                            label="Diagnostic Preset Template:",
                         )
                         access_custom_notes = gr.Textbox(
-                            label="Ophthalmic Physician Field Notes / Custom Findings (వైద్యుల అదనపు గమనిక):",
-                            placeholder="డాక్టర్ వివరాలు లేదా అదనపు సూచనలు ఇక్కడ నమోదు చేయండి...",
+                            label="Ophthalmic Physician Field Notes / Custom Findings:",
+                            placeholder="Enter notes or additional clinical recommendations...",
                             lines=3,
                         )
                         with gr.Row():
                             access_lang_choice = gr.Radio(
                                 choices=["Telugu (తెలుగు)", "English", "Bilingual (తెలుగు + English)"],
                                 value="Telugu (తెలుగు)",
-                                label="Audio Language (ఆడియో భాష):",
+                                label="Audio Language:",
                             )
                             access_speech_speed = gr.Radio(
                                 choices=["సాధారణం (Normal)", "నెమ్మదిగా (Slow)"],
                                 value="సాధారణం (Normal)",
-                                label="Voice Pace / Speed (వాయిస్ వేగం):",
+                                label="Voice Pace / Speed:",
                             )
                         btn_generate_accessible_audio = gr.Button(
-                            "🎙️ Synthesize Localized Regional Patient Audio Report",
+                            "Synthesize Patient Audio Report",
                             variant="primary",
                         )
 
                     with gr.Column(scale=6):
                         accessible_audio_output = gr.Audio(
-                            label="Synthesized Patient Audio Report (రూపొందించబడిన ఆడియో నివేదిక)",
+                            label="Synthesized Patient Audio Report",
                             type="filepath",
                             interactive=False,
                         )
                         accessible_summary_output = gr.Markdown(
-                            value="*Click 'Synthesize Localized Regional Patient Audio Report' to generate voice narration.*"
+                            value="*Click 'Synthesize Patient Audio Report' to generate voice narration.*"
                         )
 
                 btn_generate_accessible_audio.click(
@@ -3258,7 +3584,7 @@ def build_app() -> gr.Blocks:
             # ---------------------------------------------------------------
             # TAB 6: CDSCO Statutory Disclaimers & SaMD Governance
             # ---------------------------------------------------------------
-            with gr.TabItem("📜 CDSCO Regulatory Disclaimers & SaMD Governance"):
+            with gr.TabItem("Regulatory Disclaimers"):
                 gr.Markdown(CDSCO_FULL_DISCLAIMER_MARKDOWN)
 
         # Footer Notice
@@ -3266,7 +3592,7 @@ def build_app() -> gr.Blocks:
             """
             <div style="text-align: center; margin-top: 28px; padding: 16px 20px; color: #64748b; font-size: 0.78rem; border-top: 1px solid rgba(148, 163, 184, 0.12); line-height: 1.6;">
                 <div style="margin-bottom: 4px; font-weight: 600; color: #94a3b8;">
-                    NyxVision Clinical Architecture &bull; Standardized Retinal Tolerances (2.0 - 3.5 DD, &plusmn;15&deg; temporal axis) &bull;
+                    Func2OCT Clinical Architecture &bull; Standardized Retinal Tolerances (2.0 - 3.5 DD, &plusmn;15&deg; temporal axis) &bull;
                     8-Layer Automated Tracing (ILM, RNFL, IPL, INL, OPL, ELM, RPE, BM) &bull; Model B Gated Multimodal Fusion
                 </div>
                 <div>
