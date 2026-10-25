@@ -236,3 +236,65 @@ def test_volume_3d_feature_extractor_shapes():
     assert feat.shape == (1, 512)
     assert torch.isfinite(feat).all()
 
+
+def test_exact_subspace_projection_fid():
+    """Verifies that subspace projection matches full high-dimensional FID calculation."""
+    rng = np.random.RandomState(42)
+    n_real, n_fake, d_feat = 3, 3, 128
+    feat_real = rng.randn(n_real, d_feat).astype(np.float64)
+    feat_fake = rng.randn(n_fake, d_feat).astype(np.float64) + 0.5
+
+    # 1. Full high-dimensional calculation
+    mu1, s1 = compute_activation_statistics(feat_real)
+    mu2, s2 = compute_activation_statistics(feat_fake)
+    fid_full = compute_frechet_distance(mu1, s1, mu2, s2)
+
+    # 2. Subspace projection via compute_fid_from_features
+    fid_subspace = compute_fid_from_features(feat_real, feat_fake)
+
+    assert fid_full >= 0.0
+    assert fid_subspace >= 0.0
+    assert math.isclose(fid_full, fid_subspace, rel_tol=1e-4, abs_tol=1e-4)
+
+
+def test_generation_evaluation_cli_execution(tmp_path):
+    """Verifies that evaluate_generation.py CLI executes cleanly in demo mode and exports artifacts."""
+    import subprocess
+    import sys
+    import json
+
+    cli_script = Path(__file__).resolve().parent.parent / "scripts" / "evaluate_generation.py"
+    out_dir = tmp_path / "gen_eval_reports"
+
+    cmd = [
+        sys.executable,
+        str(cli_script),
+        "--demo",
+        "--use-lightweight-extractor",
+        "--max-samples", "2",
+        "--output-dir", str(out_dir),
+    ]
+
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0, f"CLI exited with {res.returncode}. Stderr: {res.stderr}"
+
+    # Verify generated artifacts
+    json_report = out_dir / "generation_evaluation.json"
+    csv_report = out_dir / "generation_evaluation.csv"
+    slice_csv = out_dir / "slice_fid_profile.csv"
+    png_plot = out_dir / "generation_evaluation.png"
+
+    assert json_report.exists()
+    assert csv_report.exists()
+    assert slice_csv.exists()
+    assert png_plot.exists()
+
+    with open(json_report, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert "fid" in data
+    assert "fvd" in data
+    assert "reconstruction" in data
+    assert "slice_wise_fid" in data
+    assert data["num_real_volumes"] == 2
+

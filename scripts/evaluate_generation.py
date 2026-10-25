@@ -714,9 +714,21 @@ def print_summary_table(results: Dict[str, Any]) -> None:
 def main() -> int:
     args = parse_args()
 
+    # Load project configuration
+    cfg = None
+    if Path(args.config).exists():
+        try:
+            cfg = load_config(args.config)
+        except Exception as exc:
+            logger.warning("Could not load config file %s: %s", args.config, exc)
+
     # 1. Device Resolution
     if args.device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        target_dev = getattr(getattr(cfg, "project", None), "device", "auto") if cfg else "auto"
+        if target_dev == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            device = target_dev
     else:
         device = args.device
     logger.info("Using device: %s", device)

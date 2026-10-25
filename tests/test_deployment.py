@@ -25,8 +25,8 @@ _SRC_DIR = os.path.join(_REPO_ROOT, "src")
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
-import onnx
-import onnxruntime as ort
+onnx = pytest.importorskip("onnx", reason="onnx not installed in test environment")
+ort = pytest.importorskip("onnxruntime", reason="onnxruntime not installed in test environment")
 
 from fundus2oct.models.classifier_fundus import FundusClassifier
 from fundus2oct.models.classifier_multimodal import MultimodalClassifier

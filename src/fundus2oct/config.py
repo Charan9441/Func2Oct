@@ -118,11 +118,24 @@ class UncertaintyConfig:
 
 
 @dataclass
+class GenerativeBenchmarksConfig:
+    target_mse: float = 0.0089
+    target_mae: float = 0.0587
+    target_psnr_db: float = 30.0
+    target_ssim: float = 0.85
+
+
+@dataclass
 class EvaluationConfig:
     enable_fid: bool = False
+    enable_fvd: bool = False
     fid_min_samples: int = 50
+    fvd_min_samples: int = 10
+    compute_slice_fid: bool = True
+    use_lightweight_extractor: bool = False
     calculate_ssim_psnr: bool = True
     intensity_profile_bins: int = 64
+    benchmarks: GenerativeBenchmarksConfig = field(default_factory=GenerativeBenchmarksConfig)
     interpretability: InterpretabilityConfig = field(default_factory=InterpretabilityConfig)
     uncertainty: UncertaintyConfig = field(default_factory=UncertaintyConfig)
 
@@ -282,9 +295,20 @@ def load_config(config_path: Union[str, Path] = "configs/default.yaml") -> AppCo
     if "evaluation" in raw:
         ev = raw["evaluation"]
         cfg.evaluation.enable_fid = ev.get("enable_fid", cfg.evaluation.enable_fid)
+        cfg.evaluation.enable_fvd = ev.get("enable_fvd", cfg.evaluation.enable_fvd)
         cfg.evaluation.fid_min_samples = ev.get("fid_min_samples", cfg.evaluation.fid_min_samples)
+        cfg.evaluation.fvd_min_samples = ev.get("fvd_min_samples", cfg.evaluation.fvd_min_samples)
+        cfg.evaluation.compute_slice_fid = ev.get("compute_slice_fid", cfg.evaluation.compute_slice_fid)
+        cfg.evaluation.use_lightweight_extractor = ev.get("use_lightweight_extractor", cfg.evaluation.use_lightweight_extractor)
         cfg.evaluation.calculate_ssim_psnr = ev.get("calculate_ssim_psnr", cfg.evaluation.calculate_ssim_psnr)
         cfg.evaluation.intensity_profile_bins = ev.get("intensity_profile_bins", cfg.evaluation.intensity_profile_bins)
+
+        if "benchmarks" in ev:
+            bm = ev["benchmarks"]
+            cfg.evaluation.benchmarks.target_mse = float(bm.get("target_mse", cfg.evaluation.benchmarks.target_mse))
+            cfg.evaluation.benchmarks.target_mae = float(bm.get("target_mae", cfg.evaluation.benchmarks.target_mae))
+            cfg.evaluation.benchmarks.target_psnr_db = float(bm.get("target_psnr_db", cfg.evaluation.benchmarks.target_psnr_db))
+            cfg.evaluation.benchmarks.target_ssim = float(bm.get("target_ssim", cfg.evaluation.benchmarks.target_ssim))
 
         if "interpretability" in ev:
             interp = ev["interpretability"]

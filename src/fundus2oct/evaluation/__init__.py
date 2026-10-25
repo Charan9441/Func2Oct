@@ -61,6 +61,23 @@ from .uncertainty import (
     discover_dropout_modules,
     estimate_predictive_uncertainty,
 )
+from .bias_checks import (
+    ARMD_DATASET_SPEC,
+    IDRID_DATASET_SPEC,
+    ClassificationMetrics,
+    CompatibilityStatus,
+    DatasetSpec,
+    DatasetValidationReport,
+    SubgroupMetricResult,
+    analyze_subgroup_bias,
+    build_markdown_report,
+    compute_dataset_metrics,
+    evaluate_bias_and_generalization,
+    export_bias_evaluation_artifacts,
+    load_classifier_for_evaluation,
+    run_external_inference,
+    validate_external_dataset,
+)
 
 __all__ = [
     # Reconstruction
@@ -110,4 +127,20 @@ __all__ = [
     "estimate_predictive_uncertainty",
     "discover_dropout_modules",
     "NoDropoutLayersError",
+    # Bias Checks & Cross-Dataset Generalization
+    "ARMD_DATASET_SPEC",
+    "IDRID_DATASET_SPEC",
+    "ClassificationMetrics",
+    "CompatibilityStatus",
+    "DatasetSpec",
+    "DatasetValidationReport",
+    "SubgroupMetricResult",
+    "analyze_subgroup_bias",
+    "build_markdown_report",
+    "compute_dataset_metrics",
+    "evaluate_bias_and_generalization",
+    "export_bias_evaluation_artifacts",
+    "load_classifier_for_evaluation",
+    "run_external_inference",
+    "validate_external_dataset",
 ]

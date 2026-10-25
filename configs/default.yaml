@@ -107,9 +107,18 @@ inference:
 
 evaluation:
   enable_fid: false           # Requires min 50 representative samples & trained Inception
+  enable_fvd: false           # 3D Spatio-temporal Volume FID
   fid_min_samples: 50
+  fvd_min_samples: 10
+  compute_slice_fid: true     # Depth-wise slice FID profiling
+  use_lightweight_extractor: false
   calculate_ssim_psnr: true   # Only when spatially aligned reference OCT is provided
   intensity_profile_bins: 64  # A-scan depth profile analysis
+  benchmarks:
+    target_mse: 0.0089
+    target_mae: 0.0587
+    target_psnr_db: 30.0
+    target_ssim: 0.85
   interpretability:
     gradcam_target_layer: "auto"
     gradcam_alpha: 0.45

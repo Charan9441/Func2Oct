@@ -159,6 +159,51 @@ def compute_fid_from_features(
     eps: float = 1e-6,
 ) -> float:
     """Computes FID given pre-extracted feature representations for real and fake samples."""
+    if isinstance(feat_real, torch.Tensor):
+        feat_real = feat_real.detach().cpu().numpy()
+    if isinstance(feat_fake, torch.Tensor):
+        feat_fake = feat_fake.detach().cpu().numpy()
+
+    feat_real = np.asarray(feat_real, dtype=np.float64)
+    feat_fake = np.asarray(feat_fake, dtype=np.float64)
+    if feat_real.ndim == 1:
+        feat_real = feat_real.reshape(-1, 1)
+    elif feat_real.ndim != 2:
+        feat_real = feat_real.reshape(feat_real.shape[0], -1)
+
+    if feat_fake.ndim == 1:
+        feat_fake = feat_fake.reshape(-1, 1)
+    elif feat_fake.ndim != 2:
+        feat_fake = feat_fake.reshape(feat_fake.shape[0], -1)
+
+    n_r, d_r = feat_real.shape
+    n_f, d_f = feat_fake.shape
+    if d_r != d_f:
+        raise ValueError(f"Feature dimension mismatch: {d_r} vs {d_f}")
+
+    # Fast exact subspace projection when sample count is smaller than feature dimension (e.g. N + M + 1 < D)
+    # Outside the affine span of {X, Y, mu_r - mu_f}, both covariances are isotropic eps*I, which cancel out identically.
+    if (n_r + n_f + 1) < d_r:
+        mu_r = np.mean(feat_real, axis=0)
+        mu_f = np.mean(feat_fake, axis=0)
+        diff = mu_r - mu_f
+
+        denom_r = np.sqrt(max(1, n_r - 1))
+        denom_f = np.sqrt(max(1, n_f - 1))
+        candidates = np.vstack([
+            (feat_real - mu_r) / denom_r,
+            (feat_fake - mu_f) / denom_f,
+            diff.reshape(1, -1),
+        ])
+        Q, _ = np.linalg.qr(candidates.T)
+        k = Q.shape[1]
+
+        feat_real_proj = feat_real.dot(Q)
+        feat_fake_proj = feat_fake.dot(Q)
+        mu_real, sigma_real = compute_activation_statistics(feat_real_proj, eps=eps)
+        mu_fake, sigma_fake = compute_activation_statistics(feat_fake_proj, eps=eps)
+        return compute_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake, eps=eps)
+
     mu_real, sigma_real = compute_activation_statistics(feat_real, eps=eps)
     mu_fake, sigma_fake = compute_activation_statistics(feat_fake, eps=eps)
     return compute_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake, eps=eps)
@@ -605,6 +650,8 @@ def compute_slice_wise_fid(
     batch_size: int = 32,
     device: Optional[Union[str, torch.device]] = None,
     eps: float = 1e-6,
+    precomputed_features_real: Optional[np.ndarray] = None,
+    precomputed_features_fake: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
     Performs depth slice-by-slice FID profiling across the OCT volume.
@@ -637,22 +684,29 @@ def compute_slice_wise_fid(
             f"Expected (B, D, H, W) volumes for slice-wise evaluation. Got real {real_volumes.shape}, fake {fake_volumes.shape}"
         )
 
-    depth = min(real_volumes.shape[1], fake_volumes.shape[1])
-    if feature_extractor is None:
-        feature_extractor = InceptionV3FeatureExtractor(device=device)
+    b_real, d_real, h_real, w_real = real_volumes.shape
+    b_fake, d_fake, h_fake, w_fake = fake_volumes.shape
+    depth = min(d_real, d_fake)
+
+    if precomputed_features_real is not None and precomputed_features_fake is not None:
+        feat_r_all = precomputed_features_real
+        feat_f_all = precomputed_features_fake
+    else:
+        if feature_extractor is None:
+            feature_extractor = InceptionV3FeatureExtractor(device=device)
+        real_flat = real_volumes.reshape(-1, 1, h_real, w_real)
+        fake_flat = fake_volumes.reshape(-1, 1, h_fake, w_fake)
+        feat_r_flat = extract_features(real_flat, feature_extractor, batch_size=batch_size, device=device)
+        feat_f_flat = extract_features(fake_flat, feature_extractor, batch_size=batch_size, device=device)
+        feat_r_all = feat_r_flat.reshape(b_real, d_real, -1)
+        feat_f_all = feat_f_flat.reshape(b_fake, d_fake, -1)
 
     per_slice: Dict[int, float] = {}
 
     for d in range(depth):
-        real_slice_d = real_volumes[:, d, :, :]  # (B, H, W)
-        fake_slice_d = fake_volumes[:, d, :, :]  # (B, H, W)
-
-        fid_d = compute_fid(
-            real_slice_d,
-            fake_slice_d,
-            feature_extractor=feature_extractor,
-            batch_size=batch_size,
-            device=device,
+        fid_d = compute_fid_from_features(
+            feat_r_all[:, d, :],
+            feat_f_all[:, d, :],
             eps=eps,
         )
         per_slice[d] = float(fid_d)
@@ -806,14 +860,12 @@ def evaluate_generative_distributions(
     fake_b_scans = fake_volumes_4d.reshape(-1, 1, h_fake, w_fake)
 
     logger.info("Computing 2D FID on %d real vs %d fake B-scans...", real_b_scans.shape[0], fake_b_scans.shape[0])
-    fid_val = compute_fid(
-        real_b_scans,
-        fake_b_scans,
-        feature_extractor=extractor_2d,
-        batch_size=batch_size * 2,
-        device=device,
-        eps=eps,
-    )
+    if extractor_2d is None:
+        extractor_2d = InceptionV3FeatureExtractor(device=device)
+
+    feat_real_bscans = extract_features(real_b_scans, extractor_2d, batch_size=batch_size * 2, device=device)
+    feat_fake_bscans = extract_features(fake_b_scans, extractor_2d, batch_size=batch_size * 2, device=device)
+    fid_val = compute_fid_from_features(feat_real_bscans, feat_fake_bscans, eps=eps)
 
     # 2. Compute 3D Volumetric FVD
     logger.info("Computing 3D FVD on %d real vs %d fake OCT volumes...", n_real, n_fake)
@@ -839,6 +891,8 @@ def evaluate_generative_distributions(
     # 3. Slice-wise FID Profiling
     if compute_slice_fid_flag:
         logger.info("Computing depth slice-wise FID across %d slices...", results["volume_depth"])
+        feat_r_by_slice = feat_real_bscans.reshape(n_real, d_real, -1)
+        feat_f_by_slice = feat_fake_bscans.reshape(n_fake, d_fake, -1)
         slice_res = compute_slice_wise_fid(
             real_volumes_4d,
             fake_volumes_4d,
@@ -846,6 +900,8 @@ def evaluate_generative_distributions(
             batch_size=batch_size * 2,
             device=device,
             eps=eps,
+            precomputed_features_real=feat_r_by_slice,
+            precomputed_features_fake=feat_f_by_slice,
         )
         results["slice_wise_fid"] = slice_res
 
