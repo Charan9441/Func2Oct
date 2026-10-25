@@ -35,11 +35,7 @@ access_token
 secrets.*
 credentials/
 
-# Dataset files & archives (preserve directory structure with .gitkeep)
-data/fundus/*
-!data/fundus/.gitkeep
-data/oct/*
-!data/oct/.gitkeep
+# Dataset archives & staging folders (benchmark & evaluation dataset images in data/ are tracked)
 data/raw/*
 data/staging/*
 data/*.zip

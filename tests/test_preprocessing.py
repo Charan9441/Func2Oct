@@ -593,5 +593,129 @@ def test_evaluate_auto_capture_frame_convenience():
     assert decision.is_focus_valid is True
 
 
+def test_apply_clahe_grayscale_and_color():
+    """Validates CLAHE enhancement across grayscale and LAB color channels."""
+    from fundus2oct.data.quality_control import apply_clahe
+
+    # 1. Grayscale image
+    gray = np.random.randint(50, 150, (128, 128), dtype=np.uint8)
+    enhanced_gray = apply_clahe(gray, clip_limit=3.0, tile_grid_size=(8, 8))
+    assert enhanced_gray.shape == gray.shape
+    assert enhanced_gray.dtype == np.uint8
+    assert enhanced_gray.std() >= gray.std()
+
+    # 2. RGB image in LAB mode
+    rgb = np.zeros((128, 128, 3), dtype=np.uint8)
+    rgb[:, :, 0] = 180  # Red
+    rgb[:, :, 1] = 80   # Green
+    rgb[:, :, 2] = 40   # Blue
+    enhanced_rgb = apply_clahe(rgb, clip_limit=2.5, tile_grid_size=(8, 8), color_space="LAB")
+    assert enhanced_rgb.shape == rgb.shape
+    assert enhanced_rgb.dtype == np.uint8
+
+
+def test_preprocess_optic_disc_clahe():
+    """Validates optic disc bright channel extraction, CLAHE enhancement, and vessel suppression."""
+    from fundus2oct.data.quality_control import preprocess_optic_disc_clahe
+    from fundus2oct.data.auto_capture import create_demo_fundus
+
+    fundus = create_demo_fundus(blur_level=0.0, disc_x=160, disc_y=250)
+    blurred, clahe_enh, vessel_supp = preprocess_optic_disc_clahe(
+        fundus,
+        clahe_clip_limit=2.5,
+        clahe_grid_size=(8, 8),
+        suppress_vessels=True,
+    )
+    assert blurred.shape == fundus.shape[:2]
+    assert clahe_enh.shape == fundus.shape[:2]
+    assert vessel_supp.shape == fundus.shape[:2]
+    # Disc region (around 160, 250) should be bright
+    assert blurred[250, 160] > blurred[250, 340]
+
+
+def test_preprocess_macula_clahe():
+    """Validates macula green channel luteal extraction, CLAHE, and valley response map."""
+    from fundus2oct.data.quality_control import preprocess_macula_clahe
+    from fundus2oct.data.auto_capture import create_demo_fundus
+
+    fundus = create_demo_fundus(blur_level=0.0, disc_x=160, disc_y=250, macula_dist_dd=2.7)
+    valley_map, clahe_enh, closed_ch = preprocess_macula_clahe(
+        fundus,
+        clahe_clip_limit=2.5,
+        clahe_grid_size=(8, 8),
+        od_diameter=70,
+    )
+    assert valley_map.shape == fundus.shape[:2]
+    assert clahe_enh.shape == fundus.shape[:2]
+    assert closed_ch.shape == fundus.shape[:2]
+    assert valley_map.max() > 5.0
+
+
+def test_detect_optic_disc_with_clahe():
+    """Validates accurate optic disc localization using CLAHE enhancement."""
+    from fundus2oct.data.quality_control import detect_optic_disc
+    from fundus2oct.data.auto_capture import create_demo_fundus
+
+    fundus = create_demo_fundus(blur_level=0.0, disc_x=160, disc_y=250)
+    od = detect_optic_disc(fundus, method="hybrid", use_clahe=True)
+
+    assert od is not None
+    assert od.confidence >= 0.70
+    assert abs(od.center[0] - 160) <= 8
+    assert abs(od.center[1] - 250) <= 8
+    assert 25 <= od.radius <= 45
+
+
+def test_detect_macula_with_clahe():
+    """Validates foveal center detection with CLAHE and anatomical prior."""
+    from fundus2oct.data.quality_control import detect_optic_disc, detect_macula
+    from fundus2oct.data.auto_capture import create_demo_fundus
+
+    # True OD at (160, 250), True macula at (349, 250) -> distance ~2.7 DD
+    fundus = create_demo_fundus(blur_level=0.0, disc_x=160, disc_y=250, macula_dist_dd=2.7)
+    od = detect_optic_disc(fundus, use_clahe=True)
+    mac = detect_macula(fundus, optic_disc=od, use_clahe=True)
+
+    assert mac is not None
+    assert mac.confidence >= 0.40
+    assert "clahe" in mac.method
+    # Foveal center should be positioned temporally to the OD
+    assert mac.center[0] > od.center[0]
+    assert abs(mac.center[1] - od.center[1]) <= 15
+    assert 2.2 <= mac.od_to_fovea_distance_dd <= 3.2
+
+
+def test_detect_retinal_landmarks_full_pipeline():
+    """Validates the coordinated all-in-one CLAHE landmark detection pipeline."""
+    from fundus2oct.data.quality_control import detect_retinal_landmarks, QCStatus
+    from fundus2oct.data.auto_capture import create_demo_fundus
+
+    fundus = create_demo_fundus(blur_level=0.0, disc_x=160, disc_y=250, macula_dist_dd=2.7)
+    res = detect_retinal_landmarks(fundus, use_clahe=True, expected_laterality="OD")
+
+    assert res["is_valid"] is True
+    assert res["optic_disc"].confidence >= 0.70
+    assert res["macula"].confidence >= 0.40
+    assert res["geometric_qc"] is not None
+    assert res["geometric_qc"].status == QCStatus.PASS
+    assert res["geometric_qc"].inferred_laterality == "OD"
+    assert res["clahe_image"].shape == fundus.shape
+    assert res["annotated_image"].shape == fundus.shape
+
+
+def test_draw_clahe_enhancement_comparison():
+    """Validates diagnostic 4-panel CLAHE comparison generation."""
+    from fundus2oct.data.quality_control import draw_clahe_enhancement_comparison
+    from fundus2oct.data.auto_capture import create_demo_fundus
+
+    fundus = create_demo_fundus(blur_level=0.0)
+    grid = draw_clahe_enhancement_comparison(fundus, target_size=(256, 256))
+
+    # 2x2 grid of (256, 256) tiles -> (512, 512, 3)
+    assert grid.shape == (512, 512, 3)
+    assert grid.dtype == np.uint8
+
+
+
 
 

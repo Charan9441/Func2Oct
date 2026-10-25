@@ -496,18 +496,122 @@ def _ensure_uint8_image(image: Union[np.ndarray, Image.Image]) -> np.ndarray:
     return np.zeros(img_float.shape, dtype=np.uint8)
 
 
+def apply_clahe(
+    image: Union[np.ndarray, Image.Image],
+    clip_limit: float = 2.5,
+    tile_grid_size: Tuple[int, int] = (8, 8),
+    color_space: str = "LAB",
+) -> np.ndarray:
+    """Apply Contrast Limited Adaptive Histogram Equalization (CLAHE) to fundus images.
+
+    In clinical fundus photography, CLAHE normalizes non-uniform illumination (e.g. vignetting,
+    central illumination hot spots, cataract glare) and dramatically amplifies local anatomical
+    contrast across the optic disc rim, macula, and retinal microvasculature.
+
+    Args:
+        image: Input 2D (grayscale) or 3D (RGB / BGR) uint8 numpy array or PIL Image.
+        clip_limit: Threshold for contrast limiting (typical clinical range: 2.0 - 4.0).
+        tile_grid_size: Grid size for localized histogram equalization (default: 8x8).
+        color_space: Color space for 3-channel images:
+            - 'LAB': Equalizes strictly the Luminance (L*) channel in CIELAB, preserving
+                     color constancy and preventing chromatic distortion of retinal lesions.
+            - 'HSV': Equalizes strictly the Value (V) channel in HSV space.
+            - 'channel': Equalizes each channel independently.
+
+    Returns:
+        Enhanced uint8 image with identical shape and channel count.
+    """
+    uint8_img = _ensure_uint8_image(image)
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+
+    if uint8_img.ndim == 2:
+        return clahe.apply(uint8_img)
+    elif uint8_img.ndim == 3:
+        if uint8_img.shape[2] == 1:
+            return clahe.apply(uint8_img[:, :, 0])
+
+        cs = color_space.upper()
+        # Retinal fundus images have significantly higher intensity in Red than Blue
+        is_rgb = float(np.mean(uint8_img[:, :, 0])) >= float(np.mean(uint8_img[:, :, 2]))
+
+        if cs == "LAB":
+            code_fwd = cv2.COLOR_RGB2LAB if is_rgb else cv2.COLOR_BGR2LAB
+            code_rev = cv2.COLOR_LAB2RGB if is_rgb else cv2.COLOR_LAB2BGR
+            lab = cv2.cvtColor(uint8_img, code_fwd)
+            lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+            return cv2.cvtColor(lab, code_rev)
+        elif cs == "HSV":
+            code_fwd = cv2.COLOR_RGB2HSV if is_rgb else cv2.COLOR_BGR2HSV
+            code_rev = cv2.COLOR_HSV2RGB if is_rgb else cv2.COLOR_HSV2BGR
+            hsv = cv2.cvtColor(uint8_img, code_fwd)
+            hsv[:, :, 2] = clahe.apply(hsv[:, :, 2])
+            return cv2.cvtColor(hsv, code_rev)
+        else:
+            out = np.zeros_like(uint8_img)
+            for c in range(uint8_img.shape[2]):
+                out[:, :, c] = clahe.apply(uint8_img[:, :, c])
+            return out
+    else:
+        raise ValueError(f"Unsupported image shape: {uint8_img.shape}")
+
+
 def _extract_bright_channel(image: np.ndarray) -> np.ndarray:
     """Extract channel with highest optic disc contrast (Red / luminance)."""
     uint8_img = _ensure_uint8_image(image)
     if uint8_img.ndim == 2:
         return uint8_img
     elif uint8_img.ndim == 3:
-        gray = cv2.cvtColor(uint8_img, cv2.COLOR_BGR2GRAY)
-        red_channel = uint8_img[:, :, 2] if uint8_img.shape[2] >= 3 else gray
-        combined = cv2.addWeighted(red_channel, 0.7, gray, 0.3, 0)
+        if uint8_img.shape[2] == 1:
+            return uint8_img[:, :, 0]
+        # In fundus photos, red channel has lowest melanin and hemoglobin absorption,
+        # making the optic disc dramatically brighter than the surrounding retinal background.
+        is_rgb = float(np.mean(uint8_img[:, :, 0])) >= float(np.mean(uint8_img[:, :, 2]))
+        gray = cv2.cvtColor(uint8_img, cv2.COLOR_RGB2GRAY if is_rgb else cv2.COLOR_BGR2GRAY)
+        red_channel = uint8_img[:, :, 0] if is_rgb else uint8_img[:, :, 2]
+        combined = cv2.addWeighted(red_channel, 0.70, gray, 0.30, 0)
         return combined
     else:
         raise ValueError(f"Unsupported image dimensions: {uint8_img.ndim}")
+
+
+def preprocess_optic_disc_clahe(
+    image: np.ndarray,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
+    blur_kernel_size: int = 15,
+    suppress_vessels: bool = True,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Enhance contrast, normalize illumination, and suppress vessels for optic disc detection.
+
+    Retinal fundus optic disc detection pipeline:
+    1. Extracts high-contrast bright/red channel (least retinal pigment/vessel absorption).
+    2. Applies CLAHE to elevate boundary gradient across varying retinal pigmentation.
+    3. Performs morphological closing with an elliptical structuring element to fill dark
+       vessel trenches inside the neuroretinal rim and cup.
+    4. Applies Gaussian smoothing to regularize disc boundary contours.
+
+    Returns:
+        Tuple of (blurred_channel, clahe_enhanced, vessel_suppressed)
+    """
+    channel = _extract_bright_channel(image)
+    clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=clahe_grid_size)
+    clahe_enhanced = clahe.apply(channel)
+
+    h, w = channel.shape[:2]
+    min_dim = min(h, w)
+
+    if suppress_vessels:
+        k_close = max(5, int(min_dim * 0.025))
+        if k_close % 2 == 0:
+            k_close += 1
+        struct_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_close, k_close))
+        vessel_suppressed = cv2.morphologyEx(clahe_enhanced, cv2.MORPH_CLOSE, struct_elem)
+    else:
+        vessel_suppressed = clahe_enhanced
+
+    ksize = blur_kernel_size if blur_kernel_size % 2 == 1 else blur_kernel_size + 1
+    blurred = cv2.GaussianBlur(vessel_suppressed, (ksize, ksize), 0)
+    return blurred, clahe_enhanced, vessel_suppressed
 
 
 def _preprocess_optic_disc(
@@ -516,12 +620,14 @@ def _preprocess_optic_disc(
     clahe_grid_size: Tuple[int, int] = (8, 8),
     blur_kernel_size: int = 15,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Enhance contrast and reduce noise for optic disc detection."""
-    channel = _extract_bright_channel(image)
-    clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=clahe_grid_size)
-    enhanced = clahe.apply(channel)
-    ksize = blur_kernel_size if blur_kernel_size % 2 == 1 else blur_kernel_size + 1
-    blurred = cv2.GaussianBlur(enhanced, (ksize, ksize), 0)
+    """Backward-compatible helper returning (blurred, clahe_enhanced)."""
+    blurred, enhanced, _ = preprocess_optic_disc_clahe(
+        image,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
+        blur_kernel_size=blur_kernel_size,
+        suppress_vessels=True,
+    )
     return blurred, enhanced
 
 
@@ -531,15 +637,28 @@ def detect_optic_disc_threshold(
     min_radius_ratio: float = 0.03,
     max_radius_ratio: float = 0.20,
     circularity_threshold: float = 0.35,
+    use_clahe: bool = True,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
+    suppress_vessels: bool = True,
 ) -> Optional[OpticDiscResult]:
-    """Detect optic disc using intensity thresholding and morphological filtering."""
+    """Detect optic disc using CLAHE enhancement, intensity thresholding, and morphological filtering."""
     uint8_img = _ensure_uint8_image(image)
     h, w = uint8_img.shape[:2]
     min_dim = min(h, w)
     min_radius = max(5, int(min_dim * min_radius_ratio))
     max_radius = max(min_radius + 5, int(min_dim * max_radius_ratio))
 
-    blurred, _ = _preprocess_optic_disc(image)
+    if use_clahe:
+        blurred, _, _ = preprocess_optic_disc_clahe(
+            image,
+            clahe_clip_limit=clahe_clip_limit,
+            clahe_grid_size=clahe_grid_size,
+            suppress_vessels=suppress_vessels,
+        )
+    else:
+        channel = _extract_bright_channel(image)
+        blurred = cv2.GaussianBlur(channel, (15, 15), 0)
 
     retinal_mask = blurred > max(15, int(np.percentile(blurred, 10)))
     if np.any(retinal_mask):
@@ -572,11 +691,15 @@ def detect_optic_disc_threshold(
         hull = cv2.convexHull(cnt)
         hull_area = cv2.contourArea(hull)
         hull_perimeter = cv2.arcLength(hull, True)
-        if hull_perimeter == 0:
+        if hull_perimeter == 0 or hull_area == 0:
             continue
 
         circularity = (4.0 * np.pi * hull_area) / (hull_perimeter ** 2)
         if circularity < circularity_threshold:
+            continue
+
+        solidity = float(area / hull_area)
+        if solidity < 0.65:
             continue
 
         M = cv2.moments(cnt)
@@ -596,7 +719,7 @@ def detect_optic_disc_threshold(
         cv2.circle(mask_test, (cx, cy), radius, 255, -1)
         mean_intensity = cv2.mean(blurred, mask=mask_test)[0]
 
-        score = circularity * 0.4 + (mean_intensity / 255.0) * 0.6
+        score = circularity * 0.35 + solidity * 0.25 + (mean_intensity / 255.0) * 0.40
 
         if score > highest_score:
             highest_score = score
@@ -622,7 +745,7 @@ def detect_optic_disc_threshold(
             mask=mask,
             contour=None,
             confidence=0.35,
-            method="threshold",
+            method="clahe_threshold_fallback" if use_clahe else "threshold",
         )
 
     cx, cy, radius, cnt, score = best_candidate
@@ -637,7 +760,7 @@ def detect_optic_disc_threshold(
         mask=mask,
         contour=cnt,
         confidence=min(1.0, float(score)),
-        method="threshold",
+        method="clahe_threshold" if use_clahe else "threshold",
     )
 
 
@@ -648,8 +771,12 @@ def detect_optic_disc_hough(
     dp: float = 1.2,
     param1: float = 50.0,
     param2: float = 30.0,
+    use_clahe: bool = True,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
+    suppress_vessels: bool = True,
 ) -> Optional[OpticDiscResult]:
-    """Detect optic disc using the Hough Circle Transform."""
+    """Detect optic disc using CLAHE enhancement and Hough Circle Transform."""
     uint8_img = _ensure_uint8_image(image)
     h, w = uint8_img.shape[:2]
     min_dim = min(h, w)
@@ -657,7 +784,16 @@ def detect_optic_disc_hough(
     max_radius = max(min_radius + 5, int(min_dim * max_radius_ratio))
     min_dist = max(min_radius * 2, int(min_dim * 0.2))
 
-    blurred, _ = _preprocess_optic_disc(image, blur_kernel_size=9)
+    if use_clahe:
+        blurred, _, _ = preprocess_optic_disc_clahe(
+            image,
+            clahe_clip_limit=clahe_clip_limit,
+            clahe_grid_size=clahe_grid_size,
+            blur_kernel_size=9,
+            suppress_vessels=suppress_vessels,
+        )
+    else:
+        blurred, _ = _preprocess_optic_disc(image, blur_kernel_size=9)
 
     circles = cv2.HoughCircles(
         blurred,
@@ -706,35 +842,46 @@ def detect_optic_disc_hough(
         mask=mask,
         contour=None,
         confidence=confidence,
-        method="hough",
+        method="clahe_hough" if use_clahe else "hough",
     )
 
 
 def detect_optic_disc(
     image: np.ndarray,
     method: str = "hybrid",
+    use_clahe: bool = True,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
+    suppress_vessels: bool = True,
     **kwargs: Any,
 ) -> OpticDiscResult:
-    """Detect the optic disc center and boundary in a fundus image."""
+    """Detect the optic disc center and boundary in a fundus image with CLAHE contrast enhancement."""
     method_lower = method.lower()
+    common_args = {
+        "use_clahe": use_clahe,
+        "clahe_clip_limit": clahe_clip_limit,
+        "clahe_grid_size": clahe_grid_size,
+        "suppress_vessels": suppress_vessels,
+    }
+    common_args.update(kwargs)
 
     if method_lower == "threshold":
-        result = detect_optic_disc_threshold(image, **kwargs)
+        result = detect_optic_disc_threshold(image, **common_args)
         return result if result is not None else _create_fallback_optic_disc(image)
 
     elif method_lower == "hough":
-        result = detect_optic_disc_hough(image, **kwargs)
+        result = detect_optic_disc_hough(image, **common_args)
         if result is not None:
             return result
-        res_fallback = detect_optic_disc_threshold(image)
+        res_fallback = detect_optic_disc_threshold(image, **common_args)
         if res_fallback is not None:
             res_fallback.method = "hough_fallback_to_threshold"
             return res_fallback
         return _create_fallback_optic_disc(image)
 
     elif method_lower == "hybrid":
-        thresh_result = detect_optic_disc_threshold(image, **kwargs)
-        hough_result = detect_optic_disc_hough(image, **kwargs)
+        thresh_result = detect_optic_disc_threshold(image, **common_args)
+        hough_result = detect_optic_disc_hough(image, **common_args)
 
         if thresh_result is not None and hough_result is not None:
             tx, ty = thresh_result.center
@@ -888,27 +1035,81 @@ def _extract_macula_channel(image: np.ndarray) -> np.ndarray:
     uint8_img = _ensure_uint8_image(image)
     if uint8_img.ndim == 2:
         return uint8_img
-    elif uint8_img.shape[2] >= 3:
-        return uint8_img[:, :, 1]
-    return uint8_img[:, :, 0]
+    elif uint8_img.ndim == 3:
+        if uint8_img.shape[2] >= 3:
+            return uint8_img[:, :, 1]
+        return uint8_img[:, :, 0]
+    raise ValueError(f"Unsupported image dimensions: {uint8_img.ndim}")
+
+
+def preprocess_macula_clahe(
+    image: np.ndarray,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
+    od_diameter: Optional[int] = None,
+    morph_kernel_ratio: float = 0.25,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Extract and enhance the macular luteal absorption valley using CLAHE.
+
+    The macula lutea contains concentrated xanthophyll carotenoids (lutein, zeaxanthin)
+    which absorb green light strongly. In unenhanced images, wide illumination gradients
+    across the spherical fundus can overshadow the subtle macular depression.
+
+    This pipeline:
+    1. Extracts the macula-sensitive Green channel.
+    2. Applies CLAHE with adaptive clipping to flatten fundus-wide illumination falloff and
+       dramatically boost the relative depth of the macular valley.
+    3. Applies morphological closing to remove thin dark retinal vessels and capillaries.
+    4. Performs large-kernel background subtraction (`bg - closed_clahe`) to turn the
+       dark absorption depression into a sharp, prominent positive response peak.
+
+    Returns:
+        Tuple of (valley_map, clahe_enhanced, closed_channel)
+    """
+    channel = _extract_macula_channel(image)
+    clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=clahe_grid_size)
+    clahe_enhanced = clahe.apply(channel)
+
+    h, w = channel.shape[:2]
+    min_dim = min(h, w)
+    eff_od_diam = od_diameter if od_diameter is not None and od_diameter > 0 else int(min_dim * 0.14)
+
+    morph_k = max(5, int(eff_od_diam * morph_kernel_ratio))
+    if morph_k % 2 == 0:
+        morph_k += 1
+    struct_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_k, morph_k))
+    closed = cv2.morphologyEx(clahe_enhanced, cv2.MORPH_CLOSE, struct_elem)
+
+    bg_k = max(21, int(min_dim * 0.15))
+    if bg_k % 2 == 0:
+        bg_k += 1
+    bg = cv2.GaussianBlur(closed, (bg_k, bg_k), 0)
+
+    valley_map = np.clip(bg.astype(np.float32) - closed.astype(np.float32), 0.0, 255.0)
+    valley_map = cv2.GaussianBlur(valley_map, (11, 11), 0)
+
+    return valley_map, clahe_enhanced, closed
 
 
 def detect_macula(
     image: np.ndarray,
     optic_disc: Optional[OpticDiscResult] = None,
+    use_clahe: bool = True,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
     distance_dd_range: Tuple[float, float] = (2.0, 3.5),
     nominal_angle_deg: float = 0.0,
     angle_std_deg: float = 12.0,
     temporal_direction: Optional[str] = None,
     morph_kernel_ratio: float = 0.25,
 ) -> MaculaResult:
-    """Detect the macula and foveal center in a fundus image using anatomical priors and valley searching."""
+    """Detect the macula and foveal center in a fundus image using CLAHE enhancement and anatomical priors."""
     uint8_img = _ensure_uint8_image(image)
     h, w = uint8_img.shape[:2]
     min_dim = min(h, w)
 
     if optic_disc is None:
-        optic_disc = detect_optic_disc(image)
+        optic_disc = detect_optic_disc(image, use_clahe=use_clahe, clahe_clip_limit=clahe_clip_limit)
 
     od_x, od_y = optic_disc.center
     od_radius = optic_disc.radius
@@ -947,21 +1148,29 @@ def detect_macula(
     fov_mask = bright_ch > max(15, int(np.percentile(bright_ch, 10)))
     spatial_prior[~fov_mask] = 0.0
 
-    channel = _extract_macula_channel(image)
+    if use_clahe:
+        valley_map, _, _ = preprocess_macula_clahe(
+            image,
+            clahe_clip_limit=clahe_clip_limit,
+            clahe_grid_size=clahe_grid_size,
+            od_diameter=od_diameter,
+            morph_kernel_ratio=morph_kernel_ratio,
+        )
+    else:
+        channel = _extract_macula_channel(image)
+        morph_k = max(5, int(od_diameter * morph_kernel_ratio))
+        if morph_k % 2 == 0:
+            morph_k += 1
+        struct_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_k, morph_k))
+        closed = cv2.morphologyEx(channel, cv2.MORPH_CLOSE, struct_elem)
 
-    morph_k = max(5, int(od_diameter * morph_kernel_ratio))
-    if morph_k % 2 == 0:
-        morph_k += 1
-    struct_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_k, morph_k))
-    closed = cv2.morphologyEx(channel, cv2.MORPH_CLOSE, struct_elem)
+        bg_k = max(21, int(min_dim * 0.15))
+        if bg_k % 2 == 0:
+            bg_k += 1
+        bg = cv2.GaussianBlur(closed, (bg_k, bg_k), 0)
 
-    bg_k = max(21, int(min_dim * 0.15))
-    if bg_k % 2 == 0:
-        bg_k += 1
-    bg = cv2.GaussianBlur(closed, (bg_k, bg_k), 0)
-
-    valley_map = np.clip(bg.astype(np.float32) - closed.astype(np.float32), 0.0, 255.0)
-    valley_map = cv2.GaussianBlur(valley_map, (11, 11), 0)
+        valley_map = np.clip(bg.astype(np.float32) - closed.astype(np.float32), 0.0, 255.0)
+        valley_map = cv2.GaussianBlur(valley_map, (11, 11), 0)
 
     response_map = valley_map * spatial_prior
     max_val = float(response_map.max())
@@ -983,8 +1192,9 @@ def detect_macula(
         else:
             fovea_x, fovea_y = peak_x, peak_y
 
-        confidence = float(np.clip(0.4 * (max_val / 30.0) + 0.6 * spatial_prior[fovea_y, fovea_x], 0.2, 1.0))
-        method_used = "anatomical_valley"
+        conf_scale = 25.0 if use_clahe else 30.0
+        confidence = float(np.clip(0.45 * (max_val / conf_scale) + 0.55 * spatial_prior[fovea_y, fovea_x], 0.25, 1.0))
+        method_used = "clahe_anatomical_valley" if use_clahe else "anatomical_valley"
     else:
         fovea_x = int(round(mu_x))
         fovea_y = int(round(mu_y))
@@ -1250,6 +1460,210 @@ def draw_geometric_verification(
     )
 
     return canvas
+
+
+def detect_retinal_landmarks(
+    image: Union[np.ndarray, Image.Image],
+    use_clahe: bool = True,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
+    expected_laterality: Optional[str] = None,
+    verify_geometry: bool = True,
+) -> Dict[str, Any]:
+    """End-to-end retinal landmark localization pipeline powered by CLAHE contrast enhancement.
+
+    Performs:
+    1. Optic Disc detection via CLAHE-equalized bright channel and morphological vessel suppression.
+    2. Macula and foveal center detection via CLAHE-equalized green absorption valley extraction.
+    3. Anatomical geometric distance and angle verification (in units of DD).
+    4. Full-color CLAHE enhanced diagnostic canvas generation.
+
+    Args:
+        image: Input 2D/3D fundus array or PIL Image.
+        use_clahe: Whether to apply CLAHE enhancement (default: True).
+        clahe_clip_limit: CLAHE clip limit (default: 2.5).
+        clahe_grid_size: CLAHE tile grid size (default: (8, 8)).
+        expected_laterality: 'OD' (Right Eye), 'OS' (Left Eye), or None for auto-detection.
+        verify_geometry: Whether to compute geometric tolerance verification.
+
+    Returns:
+        Dictionary containing:
+            - 'optic_disc': OpticDiscResult
+            - 'macula': MaculaResult
+            - 'geometric_qc': Optional[GeometricVerificationResult]
+            - 'clahe_image': np.ndarray (RGB CLAHE enhanced image)
+            - 'od_clahe_map': np.ndarray (grayscale CLAHE bright channel)
+            - 'macula_clahe_map': np.ndarray (grayscale CLAHE valley map)
+            - 'annotated_image': np.ndarray (RGB with HUD annotations)
+            - 'is_valid': bool
+            - 'summary': str
+    """
+    uint8_img = _ensure_uint8_image(image)
+
+    # 1. Optic Disc Detection with CLAHE
+    od = detect_optic_disc(
+        uint8_img,
+        method="hybrid",
+        use_clahe=use_clahe,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
+    )
+
+    # 2. Macula Detection with CLAHE
+    mac = detect_macula(
+        uint8_img,
+        optic_disc=od,
+        use_clahe=use_clahe,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
+    )
+
+    # 3. Geometric Verification
+    geom = None
+    if verify_geometry:
+        geom = verify_optic_disc_macula_geometry(
+            od,
+            mac,
+            expected_laterality=expected_laterality,
+        )
+
+    # 4. Diagnostic Maps
+    clahe_rgb = apply_clahe(uint8_img, clip_limit=clahe_clip_limit, tile_grid_size=clahe_grid_size, color_space="LAB")
+    _, od_clahe, _ = preprocess_optic_disc_clahe(
+        uint8_img,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
+    )
+    mac_valley, _, _ = preprocess_macula_clahe(
+        uint8_img,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
+        od_diameter=2 * od.radius,
+    )
+
+    annotated = uint8_img.copy()
+    if geom is not None:
+        annotated = draw_geometric_verification(annotated, od, mac, geom)
+    else:
+        annotated = draw_optic_disc(annotated, od)
+        annotated = draw_macula(annotated, mac, optic_disc=od)
+
+    is_valid = (geom.is_valid if geom is not None else True) and (od.confidence >= 0.35) and (mac.confidence >= 0.30)
+    summary_lines = [
+        f"Optic Disc Center: {od.center}, Radius: {od.radius}px, Conf: {od.confidence:.2f} ({od.method})",
+        f"Macula / Fovea Center: {mac.center}, Radius: {mac.radius}px, Conf: {mac.confidence:.2f} ({mac.method})",
+    ]
+    if geom is not None:
+        summary_lines.append(
+            f"Geometry: {geom.status.value} | Distance: {geom.distance_dd:.2f} DD | Angle: {geom.angle_deg:.1f}° | Eye: {geom.inferred_laterality}"
+        )
+
+    return {
+        "optic_disc": od,
+        "macula": mac,
+        "geometric_qc": geom,
+        "clahe_image": clahe_rgb,
+        "od_clahe_map": od_clahe,
+        "macula_clahe_map": mac_valley,
+        "annotated_image": annotated,
+        "is_valid": is_valid,
+        "summary": " | ".join(summary_lines),
+    }
+
+
+def _add_panel_header(img: np.ndarray, text: str) -> None:
+    """Helper to overlay a dark banner and title text on a diagnostic panel."""
+    _, w = img.shape[:2]
+    cv2.rectangle(img, (0, 0), (w, 32), (15, 23, 42), -1)
+    cv2.putText(img, text, (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (241, 245, 249), 1, cv2.LINE_AA)
+
+
+def draw_clahe_enhancement_comparison(
+    image: Union[np.ndarray, Image.Image],
+    optic_disc: Optional[OpticDiscResult] = None,
+    macula: Optional[MaculaResult] = None,
+    clahe_clip_limit: float = 2.5,
+    clahe_grid_size: Tuple[int, int] = (8, 8),
+    target_size: Optional[Tuple[int, int]] = (512, 512),
+) -> np.ndarray:
+    """Create a 4-panel clinical diagnostic comparison matrix highlighting CLAHE landmark enhancement:
+
+    Panel 1 (Top-Left):     1. Raw Fundus Input
+    Panel 2 (Top-Right):    2. Full-Color CLAHE Enhanced (LAB Luminance Equalized)
+    Panel 3 (Bottom-Left):  3. CLAHE Optic Disc Bright Feature Map + Disc Margin
+    Panel 4 (Bottom-Right): 4. CLAHE Macular Luteal Valley Map + Foveal Center & Anatomical Vector
+    """
+    uint8_img = _ensure_uint8_image(image)
+    if uint8_img.ndim == 2:
+        base_rgb = cv2.cvtColor(uint8_img, cv2.COLOR_GRAY2RGB)
+    elif uint8_img.shape[2] == 1:
+        base_rgb = cv2.cvtColor(uint8_img[:, :, 0], cv2.COLOR_GRAY2RGB)
+    else:
+        is_rgb = float(np.mean(uint8_img[:, :, 0])) >= float(np.mean(uint8_img[:, :, 2]))
+        base_rgb = uint8_img.copy() if is_rgb else cv2.cvtColor(uint8_img, cv2.COLOR_BGR2RGB)
+
+    if target_size is not None:
+        th, tw = target_size
+        base_rgb = cv2.resize(base_rgb, (tw, th), interpolation=cv2.INTER_AREA)
+
+    if optic_disc is None:
+        optic_disc = detect_optic_disc(
+            base_rgb,
+            use_clahe=True,
+            clahe_clip_limit=clahe_clip_limit,
+            clahe_grid_size=clahe_grid_size,
+        )
+    if macula is None:
+        macula = detect_macula(
+            base_rgb,
+            optic_disc=optic_disc,
+            use_clahe=True,
+            clahe_clip_limit=clahe_clip_limit,
+            clahe_grid_size=clahe_grid_size,
+        )
+
+    # Panel 1: Raw Fundus Input
+    p1 = base_rgb.copy()
+    _add_panel_header(p1, "1. Raw Fundus Input")
+
+    # Panel 2: Full-Color CLAHE LAB Enhanced
+    p2 = apply_clahe(base_rgb, clip_limit=clahe_clip_limit, tile_grid_size=clahe_grid_size, color_space="LAB")
+    _add_panel_header(p2, "2. Full CLAHE Enhanced (LAB L*)")
+
+    # Panel 3: CLAHE Optic Disc Map + Detected Disc
+    _, od_clahe, _ = preprocess_optic_disc_clahe(
+        base_rgb,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
+    )
+    od_color = cv2.applyColorMap(od_clahe, cv2.COLORMAP_INFERNO)
+    od_color = cv2.cvtColor(od_color, cv2.COLOR_BGR2RGB)
+    cv2.circle(od_color, optic_disc.center, optic_disc.radius, (0, 255, 0), 2)
+    cv2.circle(od_color, optic_disc.center, 4, (255, 255, 255), -1)
+    if optic_disc.contour is not None:
+        cv2.drawContours(od_color, [optic_disc.contour], -1, (0, 255, 255), 1)
+    _add_panel_header(od_color, f"3. CLAHE Optic Disc Map ({optic_disc.confidence:.2f})")
+
+    # Panel 4: CLAHE Macular Valley Map + Fovea & Vector
+    mac_valley, _, _ = preprocess_macula_clahe(
+        base_rgb,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
+        od_diameter=2 * optic_disc.radius,
+    )
+    v_norm = cv2.normalize(mac_valley, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    mac_color = cv2.applyColorMap(v_norm, cv2.COLORMAP_VIRIDIS)
+    mac_color = cv2.cvtColor(mac_color, cv2.COLOR_BGR2RGB)
+    cv2.circle(mac_color, macula.center, macula.radius, (255, 200, 0), 2)
+    cv2.circle(mac_color, macula.center, 4, (255, 0, 0), -1)
+    cv2.line(mac_color, optic_disc.center, macula.center, (255, 255, 255), 2, lineType=cv2.LINE_AA)
+    _add_panel_header(mac_color, f"4. CLAHE Macular Valley ({macula.od_to_fovea_distance_dd:.2f} DD)")
+
+    # 2x2 Grid assembly
+    top_row = np.hstack([p1, p2])
+    bot_row = np.hstack([od_color, mac_color])
+    grid = np.vstack([top_row, bot_row])
+    return grid
 
 
 def check_fundus_quality(

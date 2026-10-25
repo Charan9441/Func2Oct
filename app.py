@@ -38,6 +38,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
+import plotly.graph_objects as go
 import torch
 
 # Ensure src/, repo root, and demo_assets are in Python path
@@ -84,6 +85,17 @@ from fundus2oct.visualization.segmentation import (
     draw_segmentation_overlay,
     create_colored_mask,
     create_diagnostic_report_figure,
+)
+from fundus2oct.visualization.volume_3d import (
+    create_interactive_3d_volume,
+    create_orthogonal_2d_views,
+    extract_3d_retinal_surfaces,
+    PLOTLY_COLORMAPS,
+)
+from fundus2oct.visualization.oct_viewer import (
+    render_clinical_bscan_2d,
+    create_etdrs_macular_grid,
+    CLINICAL_COLORMAPS,
 )
 from fundus2oct.models.classifier_fundus import (
     FundusClassifier,
@@ -210,6 +222,36 @@ def get_or_synthesize_volume(
             seed=42,
         )
         return _last_synthesized_volume
+
+_DEFAULT_NII_PATH = _OUTPUT_DIR / "synthetic_oct_volume_3d.nii.gz"
+
+
+def ensure_default_nifti_exists() -> Optional[str]:
+    """Ensures a baseline NIfTI volume exists on disk for immediate export download."""
+    if not _DEFAULT_NII_PATH.exists():
+        try:
+            init_vol = get_or_synthesize_volume(None)
+            save_nifti_volume(init_vol, _DEFAULT_NII_PATH)
+        except Exception as e:
+            print(f"[Init] Default NIfTI creation notice: {e}")
+    return str(_DEFAULT_NII_PATH) if _DEFAULT_NII_PATH.exists() else None
+
+
+def get_initial_3d_figure() -> go.Figure:
+    """Pre-renders default 3D MPR figure for immediate display upon page load."""
+    vol = get_or_synthesize_volume(None)
+    return create_interactive_3d_volume(
+        volume=vol,
+        mode="3D Multi-Planar Orthogonal Slices (MPR)",
+        slice_y=16,
+        slice_x=128,
+        slice_z=128,
+        colormap="bone",
+        depth_scale=2.0,
+        show_fovea_marker=True,
+        show_bounding_box=True,
+    )
+
 
 # Persistent model cache for web demo
 _classifier_cache: Dict[str, Any] = {}
@@ -1171,6 +1213,14 @@ def inspect_fundus_and_render_studio(
     disease_scenario: str,
     active_slice: int,
     viz_mode: str,
+    colormap_2d: str = "bone",
+    show_scalebar: bool = True,
+    show_fovea: bool = True,
+    mode_3d: str = "3D Multi-Planar Orthogonal Slices (MPR)",
+    slice_x: int = 128,
+    slice_z: int = 128,
+    colormap_3d: str = "bone",
+    depth_scale: float = 2.0,
 ) -> Tuple[
     Optional[np.ndarray],  # HUD
     str,                   # QC HTML
@@ -1179,19 +1229,42 @@ def inspect_fundus_and_render_studio(
     np.ndarray,            # bscan_viewer
     str,                   # thickness_html_card
     np.ndarray,            # en_face_thumbnail
+    go.Figure,             # oct_3d_plot
+    Optional[str],         # download_nifti_btn
 ]:
-    """Inspects fundus quality and immediately renders the active 3D volume view in Panel 2."""
+    """Inspects fundus quality and immediately renders the active 2D and 3D volume views in Panel 2."""
     annotated, html_card, telemetry = inspect_fundus_quality(
         image, focus_thresh, verify_geom, expected_eye
     )
     class_hint = "MD" if "Macular Degeneration" in str(disease_scenario) else "CONTROL"
     vol_3d = get_or_synthesize_volume(None, fundus_img=image, class_hint=class_hint)
 
+    # Save NIfTI for immediate clinical download
+    nii_path = _OUTPUT_DIR / "synthetic_oct_volume_3d.nii.gz"
+    try:
+        save_nifti_volume(vol_3d, nii_path)
+        download_file = str(nii_path)
+    except Exception as e:
+        print(f"[Warning] NIfTI export failed: {e}")
+        download_file = str(_DEFAULT_NII_PATH) if _DEFAULT_NII_PATH.exists() else None
+
     slice_idx = int(np.clip(active_slice, 0, len(vol_3d) - 1))
-    display_img, thickness_card = render_slice_view(vol_3d, slice_idx, viz_mode)
+    display_img, thickness_card = render_slice_view(
+        vol_3d, slice_idx, viz_mode, colormap_2d, show_scalebar, show_fovea
+    )
 
     mip = np.max(vol_3d, axis=1).astype(np.uint8)
     en_face_square = cv2.resize(mip, (256, 256), interpolation=cv2.INTER_CUBIC)
+
+    fig_3d = render_3d_volume_view(
+        volume_3d=vol_3d,
+        mode_3d=mode_3d,
+        slice_y=slice_idx,
+        slice_x=slice_x,
+        slice_z=slice_z,
+        colormap_3d=colormap_3d,
+        depth_scale=depth_scale,
+    )
 
     return (
         annotated,
@@ -1201,6 +1274,8 @@ def inspect_fundus_and_render_studio(
         display_img,
         thickness_card,
         en_face_square,
+        fig_3d,
+        download_file,
     )
 
 
@@ -1212,6 +1287,14 @@ def run_full_pipeline(
     expected_eye: str,
     active_slice: int,
     viz_mode: str,
+    colormap_2d: str = "bone",
+    show_scalebar: bool = True,
+    show_fovea: bool = True,
+    mode_3d: str = "3D Multi-Planar Orthogonal Slices (MPR)",
+    slice_x: int = 128,
+    slice_z: int = 128,
+    colormap_3d: str = "bone",
+    depth_scale: float = 2.0,
 ) -> Tuple[
     np.ndarray,         # Panel 1: Annotated HUD
     str,                # Panel 1: Quality HTML Card
@@ -1220,6 +1303,7 @@ def run_full_pipeline(
     np.ndarray,         # Panel 2: En-Face MIP image
     str,                # Panel 2: Thickness HTML Card
     Optional[str],      # Panel 2: Download NIfTI file path
+    go.Figure,          # Panel 2: Interactive 3D Plot
     str,                # Panel 3: Multimodal Prediction HTML Card
     Dict[str, Any],     # Panel 3: Telemetry JSON
 ]:
@@ -1229,6 +1313,7 @@ def run_full_pipeline(
     2. Synthesizes a 32-slice 3D OCT Volume modulated by visual conditioning.
     3. Runs 8-layer Retinal Segmentation & Thickness Profiling.
     4. Evaluates Model A (Fundus) vs. Model B (Multimodal) Diagnostic Classifiers.
+    5. Renders interactive 3D WebGL volumetric studio and clinical 2D cross-sections.
     """
     if fundus_img is None:
         fundus_arr = create_demo_fundus(blur_level=0.0)
@@ -1263,13 +1348,25 @@ def run_full_pipeline(
         download_file = str(nii_path)
     except Exception as e:
         print(f"[Warning] NIfTI export failed: {e}")
-        download_file = None
+        download_file = str(_DEFAULT_NII_PATH) if _DEFAULT_NII_PATH.exists() else None
 
     en_face_mip = np.max(vol_3d, axis=1).astype(np.uint8)
     en_face_square = cv2.resize(en_face_mip, (256, 256), interpolation=cv2.INTER_CUBIC)
 
     slice_idx = int(np.clip(active_slice, 0, 31))
-    active_view, thickness_html = render_slice_view(vol_3d, slice_idx, viz_mode)
+    active_view, thickness_html = render_slice_view(
+        vol_3d, slice_idx, viz_mode, colormap_2d, show_scalebar, show_fovea
+    )
+
+    fig_3d = render_3d_volume_view(
+        volume_3d=vol_3d,
+        mode_3d=mode_3d,
+        slice_y=slice_idx,
+        slice_x=slice_x,
+        slice_z=slice_z,
+        colormap_3d=colormap_3d,
+        depth_scale=depth_scale,
+    )
 
     model_a, model_b = get_models()
     prob_a = np.array([0.76, 0.24]) if class_hint == "CONTROL" else np.array([0.22, 0.78])
@@ -1356,6 +1453,7 @@ def run_full_pipeline(
         en_face_square,
         thickness_html,
         download_file,
+        fig_3d,
         pred_html,
         pred_telemetry,
     )
@@ -1365,8 +1463,11 @@ def render_slice_view(
     volume_3d: Optional[np.ndarray],
     slice_idx: int,
     viz_mode: str,
+    colormap_2d: str = "bone",
+    show_scalebar: bool = True,
+    show_fovea: bool = True,
 ) -> Tuple[np.ndarray, str]:
-    """Renders active 2D B-scan slice according to chosen visualization mode."""
+    """Renders active 2D B-scan slice or multi-planar montage according to chosen visualization mode."""
     vol = get_or_synthesize_volume(volume_3d)
 
     slice_idx = int(np.clip(slice_idx, 0, len(vol) - 1))
@@ -1376,9 +1477,56 @@ def render_slice_view(
     thickness_card = format_thickness_html(seg_res, slice_idx)
 
     if viz_mode == "Raw Synthetic B-Scan":
-        display_img = cv2.cvtColor(slice_bscan, cv2.COLOR_GRAY2RGB)
+        display_img = render_clinical_bscan_2d(
+            slice_bscan,
+            colormap=colormap_2d,
+            overlay_boundaries=False,
+            show_scalebar=show_scalebar,
+            show_fovea_marker=show_fovea,
+        )
     elif viz_mode == "8-Layer Retinal Boundaries":
-        display_img = seg_res.overlay_image if seg_res.overlay_image is not None else cv2.cvtColor(slice_bscan, cv2.COLOR_GRAY2RGB)
+        display_img = render_clinical_bscan_2d(
+            slice_bscan,
+            colormap=colormap_2d,
+            overlay_boundaries=True,
+            segmentation=seg_res,
+            show_scalebar=show_scalebar,
+            show_fovea_marker=show_fovea,
+        )
+    elif viz_mode == "3-Panel Orthogonal 2D Montage (En-Face + B-Scan + Sagittal)":
+        display_img = create_orthogonal_2d_views(
+            volume=vol,
+            slice_y=slice_idx,
+            slice_x=128,
+            slice_z=128,
+            colormap=colormap_2d,
+            show_crosshairs=True,
+        )
+        thickness_card = f"""
+        <div class="card-telemetry" style="border-left: 4px solid #06b6d4;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: 700; font-size: 1.0rem; color: #f8fafc;">
+                    Synchronized Orthogonal 2D Multi-Planar Montage (MPR)
+                </span>
+                <span class="status-pill pill-cyan">Multi-Planar 2D</span>
+            </div>
+            <div style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 8px;">
+                Synchronized 3-axis orthogonal multi-planar reconstruction: <b>En-Face C-Scan</b> (Axial), <b>Transverse B-Scan</b> (Superior-Inferior Y=#{slice_idx}), and <b>Sagittal B-Scan</b> (Nasal-Temporal X=128) with calibrated crosshairs.
+            </div>
+            <div class="metrics-grid">
+                <div class="metric-item">
+                    <div class="metric-label">Active Transverse Slice</div>
+                    <div class="metric-value">Y = #{slice_idx:02d} / 31</div>
+                    <div class="metric-sub">B-Scan Plane</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Active Sagittal Slice</div>
+                    <div class="metric-value">X = #128 / 255</div>
+                    <div class="metric-sub">Perpendicular Cross-Section</div>
+                </div>
+            </div>
+        </div>
+        """
     elif viz_mode == "8-Layer Color Mask":
         display_img = seg_res.colored_mask if seg_res.colored_mask is not None else cv2.cvtColor(slice_bscan, cv2.COLOR_GRAY2RGB)
     elif viz_mode == "4-Panel Diagnostic Report":
@@ -1424,6 +1572,30 @@ def render_slice_view(
         display_img = seg_res.overlay_image if seg_res.overlay_image is not None else cv2.cvtColor(slice_bscan, cv2.COLOR_GRAY2RGB)
 
     return display_img, thickness_card
+
+
+def render_3d_volume_view(
+    volume_3d: Optional[np.ndarray],
+    mode_3d: str = "3D Multi-Planar Orthogonal Slices (MPR)",
+    slice_y: int = 16,
+    slice_x: int = 128,
+    slice_z: int = 128,
+    colormap_3d: str = "bone",
+    depth_scale: float = 2.0,
+) -> go.Figure:
+    """Renders interactive 3D WebGL volume figure."""
+    vol = get_or_synthesize_volume(volume_3d)
+    return create_interactive_3d_volume(
+        volume=vol,
+        mode=mode_3d,
+        slice_y=int(slice_y),
+        slice_x=int(slice_x),
+        slice_z=int(slice_z),
+        colormap=colormap_3d,
+        depth_scale=float(depth_scale),
+        show_fovea_marker=True,
+        show_bounding_box=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2295,45 +2467,138 @@ def build_app() -> gr.Blocks:
                             qc_audio_md = gr.Markdown()
 
                     # -------------------------------------------------------
-                    # PANEL 2: Synthetic OCT 2D/3D Viewer
+                    # PANEL 2: Synthetic OCT 2D / 3D Volumetric Studio
                     # -------------------------------------------------------
                     with gr.Column(scale=5, elem_classes=["panel-card"]):
                         gr.HTML('<span class="panel-header-badge badge-p2">Panel 2: Synthetic OCT 2D / 3D Volumetric Studio</span>')
 
+                        # Toggle for 2D vs 3D Retina Examination
                         with gr.Row():
-                            viz_mode_radio = gr.Radio(
+                            scan_dimension_radio = gr.Radio(
                                 choices=[
-                                    "Raw Synthetic B-Scan",
-                                    "8-Layer Retinal Boundaries",
-                                    "8-Layer Color Mask",
-                                    "4-Panel Diagnostic Report",
-                                    "En-Face MIP Projection",
+                                    "🔬 3D Interactive Volumetric Studio",
+                                    "📋 2D Clinical Cross-Sectional Scan",
                                 ],
-                                value="8-Layer Retinal Boundaries",
-                                label="Visualization Display Mode",
+                                value="🔬 3D Interactive Volumetric Studio",
+                                label="Retina Examination Dimension (2D vs 3D)",
                             )
 
-                        btn_panel2_render = gr.Button("⚡ Render Visual Display Mode / Update View", variant="secondary", size="sm")
+                        # ---------------------------------------------------
+                        # 3D Interactive Volumetric Studio Container
+                        # ---------------------------------------------------
+                        with gr.Column(visible=True) as container_3d:
+                            oct_3d_plot = gr.Plot(
+                                value=get_initial_3d_figure,
+                                label="Interactive 3D Retinal Studio (360° Orbit / Zoom / Pan)",
+                                elem_id="oct_3d_viewer",
+                            )
 
-                        bscan_viewer = gr.Image(
-                            label="Active Cross-Sectional View",
-                            type="numpy",
-                            height=320,
-                        )
+                            with gr.Row():
+                                mode_3d_select = gr.Dropdown(
+                                    choices=[
+                                        "3D Multi-Planar Orthogonal Slices (MPR)",
+                                        "3D Retinal Surface Topography (Foveal Pit)",
+                                        "3D Volumetric Isosurface Cloud",
+                                        "Complete 3D Composite",
+                                    ],
+                                    value="3D Multi-Planar Orthogonal Slices (MPR)",
+                                    label="3D Rendering Architecture",
+                                    scale=7,
+                                )
+                                colormap_3d_select = gr.Dropdown(
+                                    choices=["bone", "inferno", "viridis", "gray", "plasma"],
+                                    value="bone",
+                                    label="3D Colormap",
+                                    scale=5,
+                                )
 
-                        slice_slider = gr.Slider(
-                            minimum=0,
-                            maximum=31,
-                            value=16,
-                            step=1,
-                            label="B-Scan Navigation: Slice Index (0 - 31 | Central Macula ~#16)",
-                        )
+                            with gr.Row():
+                                slice_y_slider = gr.Slider(
+                                    minimum=0,
+                                    maximum=31,
+                                    value=16,
+                                    step=1,
+                                    label="Cutplane Y (B-Scan Superior-Inferior | 0-31)",
+                                    scale=6,
+                                )
+                                slice_x_slider = gr.Slider(
+                                    minimum=0,
+                                    maximum=255,
+                                    value=128,
+                                    step=1,
+                                    label="Cutplane X (Sagittal Nasal-Temporal | 0-255)",
+                                    scale=6,
+                                )
+
+                            with gr.Row():
+                                slice_z_slider = gr.Slider(
+                                    minimum=0,
+                                    maximum=255,
+                                    value=128,
+                                    step=1,
+                                    label="Cutplane Z (Axial Depth | 0-255)",
+                                    scale=6,
+                                )
+                                depth_scale_slider = gr.Slider(
+                                    minimum=1.0,
+                                    maximum=4.0,
+                                    value=2.0,
+                                    step=0.5,
+                                    label="Depth Scale (Z-Exaggeration)",
+                                    scale=6,
+                                )
+
+                            btn_update_3d = gr.Button("⚡ Update Interactive 3D Render", variant="secondary", size="sm")
+
+                        # ---------------------------------------------------
+                        # 2D Clinical Cross-Sectional Scan Container
+                        # ---------------------------------------------------
+                        with gr.Column(visible=False) as container_2d:
+                            with gr.Row():
+                                viz_mode_radio = gr.Radio(
+                                    choices=[
+                                        "8-Layer Retinal Boundaries",
+                                        "Raw Synthetic B-Scan",
+                                        "3-Panel Orthogonal 2D Montage (En-Face + B-Scan + Sagittal)",
+                                        "8-Layer Color Mask",
+                                        "4-Panel Diagnostic Report",
+                                        "En-Face MIP Projection",
+                                    ],
+                                    value="8-Layer Retinal Boundaries",
+                                    label="2D Visualization Display Mode",
+                                )
+
+                            with gr.Row():
+                                colormap_2d_select = gr.Dropdown(
+                                    choices=["bone", "inferno", "viridis", "gray", "inverted", "hot", "rainbow"],
+                                    value="bone",
+                                    label="2D Clinical Palette",
+                                    scale=4,
+                                )
+                                show_scalebar_cb = gr.Checkbox(value=True, label="200 µm Scale Bar", scale=4)
+                                show_fovea_cb = gr.Checkbox(value=True, label="Foveal Marker", scale=4)
+
+                            btn_panel2_render = gr.Button("⚡ Render 2D Display Mode / Update Slice", variant="secondary", size="sm")
+
+                            bscan_viewer = gr.Image(
+                                label="Active 2D Retinal Scan View",
+                                type="numpy",
+                                height=320,
+                            )
+
+                            slice_slider = gr.Slider(
+                                minimum=0,
+                                maximum=31,
+                                value=16,
+                                step=1,
+                                label="B-Scan Navigation: Slice Index (0 - 31 | Central Macula ~#16)",
+                            )
 
                         thickness_html_card = gr.HTML(
                             value="""
                             <div class="card-telemetry" style="border-left: 4px solid #334155;">
                                 <span style="font-weight: 600; color: #94a3b8; font-size: 0.9rem;">
-                                    Synthesize 3D OCT volume to inspect 8-layer boundary traces and thickness metrics.
+                                    Synthesize 3D OCT volume to inspect 8-layer boundary traces, 3D volumetric surfaces, and thickness metrics.
                                 </span>
                             </div>
                             """
@@ -2349,6 +2614,7 @@ def build_app() -> gr.Blocks:
                             with gr.Column(scale=6):
                                 download_nifti_btn = gr.File(
                                     label="Export 3D NIfTI (.nii.gz)",
+                                    value=ensure_default_nifti_exists(),
                                     interactive=False,
                                 )
 
@@ -2402,6 +2668,215 @@ def build_app() -> gr.Blocks:
                     outputs=[fundus_input, disease_scenario_select],
                 )
 
+                # Dimension toggle handler (2D vs 3D)
+                def toggle_dimension_view(choice: str):
+                    is_3d = "3D" in str(choice)
+                    return gr.update(visible=is_3d), gr.update(visible=not is_3d)
+
+                scan_dimension_radio.change(
+                    fn=toggle_dimension_view,
+                    inputs=[scan_dimension_radio],
+                    outputs=[container_3d, container_2d],
+                )
+
+                # Cross-navigation sync between 3D cutplane Y and 2D slice index
+                def sync_slice_to_2d(slice_y):
+                    return int(slice_y)
+
+                def sync_slice_to_3d(slice_idx):
+                    return int(slice_idx)
+
+                slice_y_slider.change(
+                    fn=sync_slice_to_2d,
+                    inputs=[slice_y_slider],
+                    outputs=[slice_slider],
+                )
+
+                slice_slider.change(
+                    fn=sync_slice_to_3d,
+                    inputs=[slice_slider],
+                    outputs=[slice_y_slider],
+                )
+
+                # 3D Interactive WebGL Rendering Triggers
+                btn_update_3d.click(
+                    fn=render_3d_volume_view,
+                    inputs=[
+                        volume_state,
+                        mode_3d_select,
+                        slice_y_slider,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[oct_3d_plot],
+                )
+
+                mode_3d_select.change(
+                    fn=render_3d_volume_view,
+                    inputs=[
+                        volume_state,
+                        mode_3d_select,
+                        slice_y_slider,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[oct_3d_plot],
+                )
+
+                colormap_3d_select.change(
+                    fn=render_3d_volume_view,
+                    inputs=[
+                        volume_state,
+                        mode_3d_select,
+                        slice_y_slider,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[oct_3d_plot],
+                )
+
+                depth_scale_slider.change(
+                    fn=render_3d_volume_view,
+                    inputs=[
+                        volume_state,
+                        mode_3d_select,
+                        slice_y_slider,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[oct_3d_plot],
+                )
+
+                slice_y_slider.change(
+                    fn=render_3d_volume_view,
+                    inputs=[
+                        volume_state,
+                        mode_3d_select,
+                        slice_y_slider,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[oct_3d_plot],
+                )
+
+                slice_x_slider.change(
+                    fn=render_3d_volume_view,
+                    inputs=[
+                        volume_state,
+                        mode_3d_select,
+                        slice_y_slider,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[oct_3d_plot],
+                )
+
+                slice_z_slider.change(
+                    fn=render_3d_volume_view,
+                    inputs=[
+                        volume_state,
+                        mode_3d_select,
+                        slice_y_slider,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[oct_3d_plot],
+                )
+
+                # 2D Cross-Sectional Rendering Triggers
+                btn_panel2_render.click(
+                    fn=render_slice_view,
+                    inputs=[
+                        volume_state,
+                        slice_slider,
+                        viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                    ],
+                    outputs=[bscan_viewer, thickness_html_card],
+                )
+
+                slice_slider.change(
+                    fn=render_slice_view,
+                    inputs=[
+                        volume_state,
+                        slice_slider,
+                        viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                    ],
+                    outputs=[bscan_viewer, thickness_html_card],
+                )
+
+                viz_mode_radio.change(
+                    fn=render_slice_view,
+                    inputs=[
+                        volume_state,
+                        slice_slider,
+                        viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                    ],
+                    outputs=[bscan_viewer, thickness_html_card],
+                )
+
+                colormap_2d_select.change(
+                    fn=render_slice_view,
+                    inputs=[
+                        volume_state,
+                        slice_slider,
+                        viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                    ],
+                    outputs=[bscan_viewer, thickness_html_card],
+                )
+
+                show_scalebar_cb.change(
+                    fn=render_slice_view,
+                    inputs=[
+                        volume_state,
+                        slice_slider,
+                        viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                    ],
+                    outputs=[bscan_viewer, thickness_html_card],
+                )
+
+                show_fovea_cb.change(
+                    fn=render_slice_view,
+                    inputs=[
+                        volume_state,
+                        slice_slider,
+                        viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                    ],
+                    outputs=[bscan_viewer, thickness_html_card],
+                )
+
+                # Fundus QC & Studio Synthesis Inspection Trigger
                 btn_qc_inspect.click(
                     fn=inspect_fundus_and_render_studio,
                     inputs=[
@@ -2412,6 +2887,14 @@ def build_app() -> gr.Blocks:
                         disease_scenario_select,
                         slice_slider,
                         viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                        mode_3d_select,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
                     ],
                     outputs=[
                         hud_output,
@@ -2421,13 +2904,43 @@ def build_app() -> gr.Blocks:
                         bscan_viewer,
                         thickness_html_card,
                         en_face_thumbnail,
+                        oct_3d_plot,
+                        download_nifti_btn,
                     ],
                 )
 
-                btn_panel2_render.click(
-                    fn=render_slice_view,
-                    inputs=[volume_state, slice_slider, viz_mode_radio],
-                    outputs=[bscan_viewer, thickness_html_card],
+                # Master Pipeline Trigger (Runs All 3 Panels End-to-End)
+                master_pipeline_btn.click(
+                    fn=run_full_pipeline,
+                    inputs=[
+                        fundus_input,
+                        disease_scenario_select,
+                        focus_threshold_slider,
+                        verify_geometry_cb,
+                        expected_eye_radio,
+                        slice_slider,
+                        viz_mode_radio,
+                        colormap_2d_select,
+                        show_scalebar_cb,
+                        show_fovea_cb,
+                        mode_3d_select,
+                        slice_x_slider,
+                        slice_z_slider,
+                        colormap_3d_select,
+                        depth_scale_slider,
+                    ],
+                    outputs=[
+                        hud_output,
+                        qc_html_card,
+                        volume_state,
+                        bscan_viewer,
+                        en_face_thumbnail,
+                        thickness_html_card,
+                        download_nifti_btn,
+                        oct_3d_plot,
+                        predictions_html_card,
+                        telemetry_json,
+                    ],
                 )
 
                 btn_qc_audio.click(
@@ -2453,42 +2966,6 @@ def build_app() -> gr.Blocks:
                         diag_lang,
                     ],
                     outputs=[diag_audio_player, diag_audio_md],
-                )
-
-                master_pipeline_btn.click(
-                    fn=run_full_pipeline,
-                    inputs=[
-                        fundus_input,
-                        disease_scenario_select,
-                        focus_threshold_slider,
-                        verify_geometry_cb,
-                        expected_eye_radio,
-                        slice_slider,
-                        viz_mode_radio,
-                    ],
-                    outputs=[
-                        hud_output,
-                        qc_html_card,
-                        volume_state,
-                        bscan_viewer,
-                        en_face_thumbnail,
-                        thickness_html_card,
-                        download_nifti_btn,
-                        predictions_html_card,
-                        telemetry_json,
-                    ],
-                )
-
-                slice_slider.change(
-                    fn=render_slice_view,
-                    inputs=[volume_state, slice_slider, viz_mode_radio],
-                    outputs=[bscan_viewer, thickness_html_card],
-                )
-
-                viz_mode_radio.change(
-                    fn=render_slice_view,
-                    inputs=[volume_state, slice_slider, viz_mode_radio],
-                    outputs=[bscan_viewer, thickness_html_card],
                 )
 
             # ---------------------------------------------------------------
